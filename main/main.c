@@ -15,7 +15,7 @@ static const char *TAG = "MAIN";
 void app_main(void) {
     setup_init();
 
-#if CONFIG_TINYUSB_CDC_ENABLED
+#if 0  /* TEMPORARY diagnostic: USB disabled to keep the console visible */
     proto_init();
 #endif
 

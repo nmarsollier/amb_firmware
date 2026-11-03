@@ -6,8 +6,8 @@
  * Called from the runtime loop every ~200 ms. Inspects the two sensors to pick
  * the correct LED state:
  *
- *   1. A sensor is unreadable -> beacon (blink-blink-fade-pause)
- *   2. Otherwise              -> dim (normal, both sensors healthy)
+ *   1. A sensor is unreadable -> green beacon (blink-blink-pause)
+ *   2. Otherwise              -> green (normal, both sensors healthy)
  *
  * No other module calls led_set_state() directly. This keeps all LED logic
  * cohesive in one place.
@@ -15,10 +15,10 @@
 #include "led_internal.h"
 
 #include "environment.h"
-#include "vibration.h"
+#include "tilt.h"
 
 void led_update(void) {
-    bool sensor_fault = !environment_ambient_valid() || !vibration_get_healthy();
+    bool sensor_fault = !environment_ambient_valid() || !tilt_get_healthy();
 
     led_set_state(sensor_fault ? LED_STATE_ERROR : LED_STATE_NORMAL);
 }

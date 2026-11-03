@@ -45,6 +45,20 @@ static esp_err_t configure_sensor(AccelSensor *sensor) {
     accelerometer_write_register(sensor, ADXL345_REG_DATA_FORMAT, 0x00);
     accelerometer_write_register(sensor, ADXL345_REG_POWER_CTL, ADXL345_POWER_CTL_MEASURE);
 
+    /* Read back the config to verify the writes took effect. */
+    uint8_t fmt = 0xFF, pwr = 0xFF;
+    accelerometer_read_register(sensor, ADXL345_REG_DATA_FORMAT, &fmt);
+    accelerometer_read_register(sensor, ADXL345_REG_POWER_CTL, &pwr);
+    ESP_LOGI(TAG, "ADXL345 config readback: DATA_FORMAT=0x%02X POWER_CTL=0x%02X", fmt, pwr);
+
+    /* Read one sample and log the raw bytes (hex) to confirm the wire format. */
+    uint8_t reg = ADXL345_REG_DATAX0;
+    uint8_t raw[6] = { 0 };
+    if (i2c_master_transmit_receive(sensor->dev_handle, &reg, 1, raw, 6, ACCEL_TIMEOUT_MS) == ESP_OK) {
+        ESP_LOGI(TAG, "ADXL345 raw: %02X %02X %02X %02X %02X %02X",
+                 raw[0], raw[1], raw[2], raw[3], raw[4], raw[5]);
+    }
+
     ESP_LOGI(TAG, "ADXL345 at 0x%02X ready", sensor->address);
     return ESP_OK;
 }

@@ -49,8 +49,9 @@ Broken-out GPIOs: GP1–GP13 (plus UART0 TX/RX). The native USB D+/D- pins
 
 ## Firmware relevance
 
-- I2C: SDA = GPIO9, SCL = GPIO8 — both broken out, no conflict with flash/PSRAM.
-- Status LED: GPIO12 (LEDC PWM).
-- Onboard RGB LED (WS2812): GPIO48 — held low at boot so it stays off.
+- I2C: SDA = GPIO8, SCL = GPIO9 — both broken out, no conflict with flash/PSRAM.
+- Status LED: onboard RGB (WS2812) on GPIO48, driven via RMT (green = healthy,
+  green beacon = fault).
+- ADXL345: 100 Hz, direct read over the shared 100 kHz I2C bus (pitch/roll).
 - USB CDC-ACM: native USB on the USB-C connector (GPIO19/20), driven by TinyUSB.
 - Flash size: 4 MB → `CONFIG_ESPTOOLPY_FLASHSIZE="4MB"`.

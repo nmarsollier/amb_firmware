@@ -1,6 +1,6 @@
 /* LED — led_set_state.c
  *
- * Purpose: apply LED state transitions (dim / beacon).
+ * Purpose: apply LED state transitions (green / red beacon).
  *
  * This is an internal helper called exclusively from led_update(). Other
  * modules must never call this directly — led_update() is the single public
@@ -8,30 +8,17 @@
  */
 #include "led_internal.h"
 
-#include "esp_err.h"
-#include "esp_log.h"
-
-static const char *TAG = "LED_STATE";
-
 /* ── Shared state ──────────────────────────────────────────── */
 
 LedState led_current_state = LED_STATE_NORMAL;
 
-/* ── Helpers ───────────────────────────────────────────────── */
-
-void led_start_fade(uint32_t target_duty, uint32_t time_ms) {
-    esp_err_t err = ledc_set_fade_time_and_start(
-        LED_MODE, LED_CHANNEL, target_duty, time_ms, LEDC_FADE_NO_WAIT);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "fade start failed: %s", esp_err_to_name(err));
-    }
-}
-
-static void apply_normal(void) {
-    led_start_fade(LED_DIM_DUTY, LED_FADE_MS);
-}
-
 /* ── Internal API ──────────────────────────────────────────── */
+
+void led_set_color(uint8_t r, uint8_t g, uint8_t b) {
+    uint8_t rgb[3] = { r, g, b };   /* LED byte order is RGB (this board's clone) */
+    rmt_transmit_config_t tx_conf = { .loop_count = 0 };
+    rmt_transmit(led_tx_chan, led_encoder, rgb, sizeof(rgb), &tx_conf);
+}
 
 void led_set_state(LedState state) {
     if (state == led_current_state) {
@@ -45,7 +32,7 @@ void led_set_state(LedState state) {
 
     switch (state) {
     case LED_STATE_NORMAL:
-        apply_normal();
+        led_set_color(LED_NORMAL_R, LED_NORMAL_G, LED_NORMAL_B);
         break;
     case LED_STATE_ERROR:
         led_beacon_start();

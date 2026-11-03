@@ -4,7 +4,7 @@
 #include "esp_err.h"
 
 /*
- * Shared I2C bus — owns the single master bus (SDA = GPIO 9, SCL = GPIO 8)
+ * Shared I2C bus — owns the single master bus (SDA = GPIO 8, SCL = GPIO 9)
  * that the ADXL345 (vibration) and the SHT31 (environment) attach to.
  *
  * i2c_bus_init() is idempotent: the bus is created on the first call, and each

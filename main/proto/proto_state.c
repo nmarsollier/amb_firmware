@@ -11,7 +11,7 @@
 #include "accelerometer.h"
 #include "environment.h"
 #include "sht31.h"
-#include "vibration.h"
+#include "tilt.h"
 
 static void get_session(const char *req, char *out, size_t cap) {
     proto_json_get_string(req, "session", out, cap);
@@ -74,9 +74,10 @@ static void state_environment(char *out, size_t cap, uint32_t id, const char *se
 
 /* ── state / vibration ─────────────────────────────────────── */
 
-static void state_vibration(char *out, size_t cap, uint32_t id, const char *session) {
-    bool enabled = vibration_get_enabled();
-    bool valid = vibration_get_valid();
+static void state_tilt(char *out, size_t cap, uint32_t id, const char *session) {
+    bool enabled = tilt_get_enabled();
+    TiltReading r;
+    tilt_get_reading(&r);
 
     size_t len = 0;
     out[0] = '\0';
@@ -85,16 +86,13 @@ static void state_vibration(char *out, size_t cap, uint32_t id, const char *sess
     if (!enabled) {
         proto_buf_append(out, cap, &len,
             ",\"data\":{\"enabled\":false,\"valid\":false,\"error\":\"SENSOR_ABSENT\","
-            "\"rms_x\":null,\"rms_y\":null,\"rms_z\":null,\"rms_total\":null}}");
+            "\"pitch_deg\":null,\"roll_deg\":null}}");
     } else {
         proto_buf_append(out, cap, &len,
             ",\"data\":{\"enabled\":true,\"valid\":%s,\"error\":null,"
-            "\"sample_rate_hz\":5,"
-            "\"rms_x\":%.3f,\"rms_y\":%.3f,\"rms_z\":%.3f,\"rms_total\":%.3f,"
-            "\"processing\":\"per_second\"}}",
-            valid ? "true" : "false",
-            vibration_get_rms_x(), vibration_get_rms_y(), vibration_get_rms_z(),
-            vibration_get_rms_total());
+            "\"pitch_deg\":%.2f,\"roll_deg\":%.2f}}",
+            r.valid ? "true" : "false",
+            r.pitch_deg, r.roll_deg);
     }
 }
 
@@ -110,8 +108,8 @@ void proto_handle_state(const char *req, uint32_t id, char *out, size_t cap) {
         state_device(out, cap, id, session);
     } else if (strcmp(target, "environment") == 0) {
         state_environment(out, cap, id, session);
-    } else if (strcmp(target, "vibration") == 0) {
-        state_vibration(out, cap, id, session);
+    } else if (strcmp(target, "tilt") == 0) {
+        state_tilt(out, cap, id, session);
     } else {
         size_t len = 0;
         out[0] = '\0';

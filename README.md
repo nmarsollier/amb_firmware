@@ -1,6 +1,6 @@
-# temp_firmware — Ambient temperature, humidity and vibration
+# temp_firmware — Ambient temperature, humidity and tilt
 
-Measures the ambient temperature/humidity and the telescope vibration. This board
+Measures the ambient temperature/humidity and the telescope tilt. This board
 hosts only the two sensors (SHT31 + ADXL345) on the shared I2C bus; the focuser and
 the fan live in their own boards (`eaf_firmware` and `fan_firmware`).
 
@@ -8,9 +8,10 @@ the fan live in their own boards (`eaf_firmware` and `fan_firmware`).
 
 - Ambient temperature and relative humidity (SHT31-D over I2C).
 - Dew point (computed from ambient temperature and humidity).
-- Telescope vibration (ADXL345 over I2C): per-axis demeaned RMS in m/s².
-- Status LED (GPIO12): dim when both sensors are healthy, beacon (blink-blink-fade)
-  when either sensor cannot be read.
+- Telescope tilt (ADXL345 over I2C): pitch and roll angles from the gravity
+  vector, in degrees.
+- Status LED (onboard RGB): green (solid) when healthy, green beacon when either
+  sensor cannot be read.
 
 No 12 V sensor and no buttons — it is a sensor module only.
 
@@ -21,9 +22,9 @@ No 12 V sensor and no buttons — it is a sensor module only.
 | `i2c_bus` | Shared I2C master bus (ADXL345 + SHT31). | SDA `I2C_SDA_GPIO`, SCL `I2C_SCL_GPIO` |
 | `sht31` | SHT31-D over I2C (driver: init, probe, read). | SDA `I2C_SDA_GPIO`, SCL `I2C_SCL_GPIO`, addr `SHT31_ADDR` |
 | `accelerometer` | ADXL345 over I2C (driver: init, probe, read). | SDA `I2C_SDA_GPIO`, SCL `I2C_SCL_GPIO`, addr `ADXL345_ADDR` |
-| `vibration` | Per-axis movement figures (demeaned RMS in m/s²) from the ADXL345. | — |
+| `tilt` | Telescope inclination: pitch/roll (degrees) from the ADXL345 gravity vector. | — |
 | `environment` | Ambient temp/humidity from the SHT31 + dew point. | — |
-| `led` | Status LED: dim when healthy, beacon when a sensor is unreadable. | `LED_GPIO` (LEDC PWM) |
+| `led` | Status LED (onboard RGB): green (solid) when healthy, green beacon on sensor fault. | `LED_GPIO` (RMT) |
 | `usb_cdc` | USB CDC-ACM transport (TinyUSB). | — |
 | `proto` | `proto=2`, `device_id="temp"`; handlers `capabilities`/`state`/`action`/`config`/`control`. | — |
 
@@ -48,7 +49,9 @@ The protocol contract is documented in [`main/proto/README.md`](main/proto/READM
 ## ADXL345 accelerometer
 
 - I2C address `ADXL345_ADDR`.
-- Measures telescope vibrations.
+- Measures the telescope's tilt/inclination (pitch/roll).
+- Sampled at 100 Hz (direct read over 100 kHz I2C); reported as pitch/roll in
+  degrees, averaged over a 1-second window.
 - Encapsulated with the temperature/humidity sensor, mounted on the telescope tube.
 - Initially statistics only, reported to the gateway. Could later analyze mount
   problems and tracking quality.
@@ -56,7 +59,7 @@ The protocol contract is documented in [`main/proto/README.md`](main/proto/READM
 ## Communication
 
 USB-CDC with JSON messages. Provides the ambient temperature/humidity/dew point and
-the vibration figures. The Go gateway (`mount_panel`) implements the Alpaca
+the tilt figures. The Go gateway (`mount_panel`) implements the Alpaca
 ObservingConditions V2 interface (and the ambient-temperature switch channel) on top
 of this link.
 

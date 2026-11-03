@@ -1,6 +1,6 @@
-# Temperature/vibration protocol (USB CDC-ACM)
+# Temperature/tilt protocol (USB CDC-ACM)
 
-Serial contract between the PC (Go gateway) and the temperature/vibration module's
+Serial contract between the PC (Go gateway) and the temperature/tilt module's
 ESP32-S3. It uses the unified transport and identifies itself through the
 `capabilities` handshake (`device_type="accessories"`, `device_id="temp"`, `proto=2`).
 
@@ -31,7 +31,7 @@ Response (`ok:true` + `data`, or `ok:false` + `error`):
 ```
 
 - `type`: `capabilities` | `state` | `config` | `control` | `action`.
-- `target`: `device` | `environment` | `vibration`.
+- `target`: `device` | `environment` | `tilt`.
 - `action` (for `type=action`) or `op` (for control/config) names the operation.
 - `params` is an object; `id` is a non-zero uint32 (0 is reserved for events, not yet
   implemented); `session`/`boot_id` are strings.
@@ -47,7 +47,7 @@ instead of the session/data envelope.
  "device_type":"accessories","device_id":"temp",
  "name":"TEMP","firmware_version":"0.1.0",
  "capabilities":{
-   "sensors":{"ambient":"SHT31","vibration":"ADXL345"}}}
+   "sensors":{"ambient":"SHT31","tilt":"ADXL345"}}}
 ```
 
 - `device_type`: `mount` | `accessories` — the discriminator.
@@ -60,7 +60,7 @@ instead of the session/data envelope.
 | `capabilities` | Unified handshake header + sensor capabilities (real). |
 | `state / device` | `health`, `sensor_health`, `reset_reason` (real). |
 | `state / environment` | Ambient only: `ambient_c`, `humidity_pct`, `dew_point_c` (real); mirror/delta/margin are always `null`. |
-| `state / vibration` | Per-axis RMS from the ADXL345 (real). |
+| `state / tilt` | Pitch/roll (degrees) from the ADXL345 gravity vector. |
 | `config / <group> / get` | Read-only mock (empty config); `set` → `NOT_SUPPORTED`. |
 | `action / device / restart` | Deferred normal reboot (real). |
 | `action / device / bootloader` | Reboot into ROM download mode (real, for button-less flashing). |
@@ -105,7 +105,10 @@ reports the subsystem's own condition:
 A `state` request **always answers**: a sensor fault is returned as an error state,
 never as a hang or a fabricated reading (no 0 °C / 0 m/s² placeholders).
 
+`state/tilt` reports the current pitch/roll angles (degrees) computed from the
+ADXL345 gravity vector, averaged over a 1-second window.
+
 ## Pending (out of this iteration)
 
 Events/subscription and push; real lease/heartbeat; `config/set` with persistence;
-`environment/refresh`, `vibration/enable|baseline|capture`.
+`environment/refresh`, `tilt/calibrate`.

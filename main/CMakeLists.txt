@@ -12,7 +12,7 @@ idf_component_register(
         "sht31/sht31_read.c"
 
         "environment/environment.c"
-        "vibration/vibration.c"
+        "tilt/tilt.c"
 
         "led/led_init.c"
         "led/led_set_state.c"
@@ -44,7 +44,7 @@ idf_component_register(
         "accelerometer"
         "sht31"
         "environment"
-        "vibration"
+        "tilt"
         "led"
         "usb_cdc"
         "proto"
@@ -55,5 +55,5 @@ idf_component_register(
         nvs_flash
         esp_driver_i2c
         esp_driver_gpio
-        esp_driver_ledc
+        esp_driver_rmt
 )

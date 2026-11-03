@@ -8,11 +8,10 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
-#include "config.h"
 #include "environment.h"
 #include "led.h"
+#include "tilt.h"
 #include "usb_cdc.h"
-#include "vibration.h"
 
 static const char *TAG = "RUNTIME_SETUP";
 
@@ -32,20 +31,18 @@ void setup_init(void) {
 
     led_init();
 
-    /* Turn off the board's own onboard LED (RGB/blue on GPIO 48) — a board
-     * indicator, not this module's status LED. Holding the WS2812 data line low
-     * keeps it dark. */
-    gpio_set_direction(ONBOARD_LED_GPIO, GPIO_MODE_OUTPUT);
-    gpio_set_level(ONBOARD_LED_GPIO, 0);
-
+    /* Tilt (ADXL345) first, before the SHT31: the SHT31's clock stretching can
+     * leave SCL held and corrupt the ADXL345's configuration. */
+    tilt_init();
     environment_init();
-    vibration_init();
 
+#if 0  /* TEMPORARY diagnostic: USB disabled to keep the console visible */
     /* USB CDC-ACM transport — the protocol is wired to it by proto_init(). */
     esp_err_t cdc_result = usb_cdc_init();
     if (cdc_result != ESP_OK) {
         ESP_LOGW(TAG, "USB CDC init failed: %s", esp_err_to_name(cdc_result));
     }
+#endif
 
     ESP_LOGI(TAG, "Board ready");
 }

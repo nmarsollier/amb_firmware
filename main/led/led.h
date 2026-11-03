@@ -4,10 +4,10 @@
 #include <stdint.h>
 
 /*
- * LED states for the status indicator on GPIO 12.
+ * LED states for the onboard RGB status indicator (WS2812 on GPIO 48).
  *
- * NORMAL — dim brightness (~12 %), both sensors reading normally.
- * ERROR  — beacon (blink-blink, slow fade-out), a sensor is unreadable.
+ * NORMAL — green (solid), both sensors reading normally.
+ * ERROR  — green beacon (blink-blink-pause), a sensor is unreadable.
  *
  * All state decisions are made inside led_update(), which is the single public
  * entry point for LED state changes. No other module should call
@@ -18,7 +18,7 @@ typedef enum {
     LED_STATE_ERROR
 } LedState;
 
-/* Initialise LEDC PWM on GPIO 12 and start in NORMAL (dim). */
+/* Initialise the WS2812 (RMT) driver and start in NORMAL (dim green). */
 void led_init(void);
 
 /*
