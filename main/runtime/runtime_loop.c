@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 
 #include "environment.h"
+#include "led.h"
 #include "vibration.h"
 
 #define MAIN_LOOP_PERIOD_MS     200
@@ -27,6 +28,7 @@ static void main_loop_task(void *arg) {
     while (true) {
         environment_update();
         vibration_update();
+        led_update();
         vTaskDelay(period);
     }
 }

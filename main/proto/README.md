@@ -62,8 +62,32 @@ instead of the session/data envelope.
 | `state / environment` | Ambient only: `ambient_c`, `humidity_pct`, `dew_point_c` (real); mirror/delta/margin are always `null`. |
 | `state / vibration` | Per-axis RMS from the ADXL345 (real). |
 | `config / <group> / get` | Read-only mock (empty config); `set` → `NOT_SUPPORTED`. |
-| `action / device / restart` | Deferred reboot (real). |
+| `action / device / restart` | Deferred normal reboot (real). |
+| `action / device / bootloader` | Reboot into ROM download mode (real, for button-less flashing). |
 | `control / device / session_open`, `heartbeat` | Minimal, no real lease enforcement. |
+
+## Reboot into bootloader (button-less flashing)
+
+`action / device / bootloader` reboots the module into the ROM download mode so
+the host can reflash it over USB-Serial-JTAG without pressing the BOOT button.
+The module answers `accepted`, then reboots ~200 ms later.
+
+Request (framed: `[u32 little-endian length][JSON]`):
+
+```json
+{"proto":2,"type":"action","id":1,"session":"s","target":"device","action":"bootloader"}
+```
+
+Response:
+
+```json
+{"proto":2,"type":"action","id":1,"session":"s","boot_id":"0e86a327","ok":true,
+ "data":{"op_id":"","status":"accepted"}}
+```
+
+After the reset the CDC port disappears and the USB-Serial-JTAG port enumerates;
+flash that new port. The download-mode flag is one-shot: it forces only the next
+boot.
 
 ## Error codes (strings)
 

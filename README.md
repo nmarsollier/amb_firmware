@@ -9,10 +9,12 @@ the fan live in their own boards (`eaf_firmware` and `fan_firmware`).
 - Ambient temperature and relative humidity (SHT31-D over I2C).
 - Dew point (computed from ambient temperature and humidity).
 - Telescope vibration (ADXL345 over I2C): per-axis demeaned RMS in m/s².
+- Status LED (GPIO12): dim when both sensors are healthy, beacon (blink-blink-fade)
+  when either sensor cannot be read.
 
-No 12 V sensor, no LEDs and no buttons — it is a sensor module only.
+No 12 V sensor and no buttons — it is a sensor module only.
 
-## Implementation status (October 2026)
+## Implementation status (November 2026)
 
 | Module | Role | Pins |
 |---|---|---|
@@ -21,6 +23,7 @@ No 12 V sensor, no LEDs and no buttons — it is a sensor module only.
 | `accelerometer` | ADXL345 over I2C (driver: init, probe, read). | SDA `I2C_SDA_GPIO`, SCL `I2C_SCL_GPIO`, addr `ADXL345_ADDR` |
 | `vibration` | Per-axis movement figures (demeaned RMS in m/s²) from the ADXL345. | — |
 | `environment` | Ambient temp/humidity from the SHT31 + dew point. | — |
+| `led` | Status LED: dim when healthy, beacon when a sensor is unreadable. | `LED_GPIO` (LEDC PWM) |
 | `usb_cdc` | USB CDC-ACM transport (TinyUSB). | — |
 | `proto` | `proto=2`, `device_id="temp"`; handlers `capabilities`/`state`/`action`/`config`/`control`. | — |
 
@@ -30,7 +33,7 @@ The protocol contract is documented in [`main/proto/README.md`](main/proto/READM
 
 | Component | Part |
 |---|---|
-| Microcontroller | ESP32-S3 <https://www.amazon.com/dp/B0DG8L7MQ9> |
+| Microcontroller | ESP32-S3 Mini (4 MB flash) <https://www.amazon.com/dp/B0GY3M83NL> |
 | Ambient temp/humidity | SHT31-D <https://www.amazon.com/dp/B0GZZ9W7CK> |
 | Accelerometer | ADXL345 |
 
@@ -56,6 +59,13 @@ USB-CDC with JSON messages. Provides the ambient temperature/humidity/dew point 
 the vibration figures. The Go gateway (`mount_panel`) implements the Alpaca
 ObservingConditions V2 interface (and the ambient-temperature switch channel) on top
 of this link.
+
+### Button-less flashing
+
+`make flash` sends the `action/device/bootloader` command over the USB CDC port,
+waits for the module to re-enumerate as USB-Serial-JTAG, and reflashes it — no
+BOOT button needed. `make enter-flash` does only the first step. The wire format
+is documented in [`main/proto/README.md`](main/proto/README.md).
 
 ## Alpaca
 

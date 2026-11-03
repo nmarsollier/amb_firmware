@@ -5,7 +5,7 @@
 #include "esp_err.h"
 
 /*
- * SHT31-D temperature/humidity sensor on the I2C bus (SDA = GPIO 5, SCL = GPIO 4).
+ * SHT31-D temperature/humidity sensor on the I2C bus (SDA = GPIO 9, SCL = GPIO 8).
  *
  * One sensor, ADDR tied to GND (address 0x44). Provides ambient temperature and
  * relative humidity; the environment module turns them into the reported

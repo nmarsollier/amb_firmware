@@ -15,7 +15,8 @@ Keep this file in a simple format so it can be read and edited quickly.
   ESP32-S3.
 - Functions: ambient temperature/humidity (SHT31, I2C), vibration (ADXL345, I2C),
   dew point (computed).
-- No 12 V sensor, no LEDs and no buttons — a sensor module only.
+- No 12 V sensor and no buttons — a sensor module only.
+- Status LED (GPIO12): dim when healthy, beacon when a sensor is unreadable.
 - USB CDC-ACM communication with JSON messages.
 - Hardware detail in `README.md`.
 
@@ -33,6 +34,7 @@ Desktop app (Go) (Alpaca/UI) → USB CDC-ACM → Proto → Sensors → I2C (hard
 - **accelerometer** (`main/accelerometer/`) — ADXL345 over I2C.
 - **vibration** (`main/vibration/`) — per-axis movement figures from the ADXL345.
 - **environment** (`main/environment/`) — ambient/humidity (SHT31) + dew point.
+- **led** (`main/led/`) — status LED (LEDC PWM): dim when healthy, beacon on sensor fault.
 - **usb_cdc** (`main/usb_cdc/`) — USB CDC-ACM transport.
 - **proto** (`main/proto/`) — `proto=2` protocol (framing, dispatch, handlers).
 - **runtime** (`main/runtime/`) — init and main loop.
@@ -41,8 +43,11 @@ Desktop app (Go) (Alpaca/UI) → USB CDC-ACM → Proto → Sensors → I2C (hard
 
 Implemented: `i2c_bus` (shared I2C master bus), `sht31` (SHT31-D), `accelerometer`
 (ADXL345) + `vibration` (per-axis movement figures), `environment` (ambient
-temp/humidity + dew point), `usb_cdc` (transport) and `proto` (`proto=2` protocol,
-`device_id="temp"`, with capabilities/state/action/config/control handlers).
+temp/humidity + dew point), `led` (status LED: dim/beacon), `usb_cdc` (transport)
+and `proto` (`proto=2` protocol, `device_id="temp"`, with
+capabilities/state/action/config/control handlers). Board: ESP32-S3 Super Mini
+(4 MB flash, I2C GPIO8/9, status LED GPIO12); `action/device/bootloader` enables
+button-less flashing.
 
 Pending: events/extended session, `config/set` with persistence, and the Go gateway.
 Contract in `main/proto/README.md`.

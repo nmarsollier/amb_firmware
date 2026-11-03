@@ -5,7 +5,7 @@
 #include "esp_err.h"
 
 /*
- * ADXL345 accelerometer on the I2C bus (SDA = GPIO 5, SCL = GPIO 4).
+ * ADXL345 accelerometer on the I2C bus (SDA = GPIO 9, SCL = GPIO 8).
  *
  * One sensor, with SDO tied to GND (address 0x53). Provides acceleration in g;
  * the vibration module turns it into statistics.

@@ -14,6 +14,11 @@ idf_component_register(
         "environment/environment.c"
         "vibration/vibration.c"
 
+        "led/led_init.c"
+        "led/led_set_state.c"
+        "led/led_update.c"
+        "led/led_beacon.c"
+
         "usb_cdc/usb_cdc_init.c"
         "usb_cdc/usb_cdc_rx.c"
         "usb_cdc/usb_cdc_tx.c"
@@ -40,6 +45,7 @@ idf_component_register(
         "sht31"
         "environment"
         "vibration"
+        "led"
         "usb_cdc"
         "proto"
         "runtime"
@@ -48,4 +54,6 @@ idf_component_register(
         esp_timer
         nvs_flash
         esp_driver_i2c
+        esp_driver_gpio
+        esp_driver_ledc
 )

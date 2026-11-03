@@ -8,7 +8,9 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
+#include "config.h"
 #include "environment.h"
+#include "led.h"
 #include "usb_cdc.h"
 #include "vibration.h"
 
@@ -27,6 +29,14 @@ void setup_init(void) {
         nvs_result = nvs_flash_init();
     }
     ESP_ERROR_CHECK(nvs_result);
+
+    led_init();
+
+    /* Turn off the board's own onboard LED (RGB/blue on GPIO 48) — a board
+     * indicator, not this module's status LED. Holding the WS2812 data line low
+     * keeps it dark. */
+    gpio_set_direction(ONBOARD_LED_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_level(ONBOARD_LED_GPIO, 0);
 
     environment_init();
     vibration_init();
