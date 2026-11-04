@@ -4,7 +4,7 @@
  * Temperature/vibration protocol — public entry point.
  *
  * The protocol is a length-prefixed JSON message stream carried over the
- * USB CDC-ACM transport (proto=2, role="accessories", device_id="temp"). It
+ * USB CDC-ACM transport (proto=2, role="accessories", device_id="amb"). It
  * exposes the ambient temperature/humidity and the vibration figures so a
  * desktop app translates them into ASCOM Alpaca and a UI. See README.md in this
  * folder for the wire contract.

@@ -2,7 +2,7 @@
 
 Serial contract between the PC (Go gateway) and the temperature/vibration module's
 ESP32-S3. It uses the unified transport and identifies itself through the
-`capabilities` handshake (`device_type="accessories"`, `device_id="temp"`, `proto=2`).
+`capabilities` handshake (`device_type="accessories"`, `device_id="amb"`, `proto=2`).
 
 ## Transport and framing
 
@@ -44,8 +44,8 @@ instead of the session/data envelope.
 ```json
 {"type":"capabilities","id":1,"ok":true,
  "boot_id":"0e86a327","proto":2,
- "device_type":"accessories","device_id":"temp",
- "name":"TEMP","firmware_version":"0.1.0",
+ "device_type":"accessories","device_id":"amb",
+ "name":"AMB","firmware_version":"0.1.0",
  "capabilities":{
    "sensors":{"ambient":"SHT31","vibration":"ADXL345"}}}
 ```

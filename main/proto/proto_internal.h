@@ -9,7 +9,7 @@
 /* ── Protocol identity ────────────────────────────────────── */
 
 #define PROTO_VERSION       2
-#define PROTO_SCHEMA        "temp"
+#define PROTO_SCHEMA        "amb"
 #define PROTO_ROLE          "accessories"
 
 #define PROTO_MAX_FRAME     2048

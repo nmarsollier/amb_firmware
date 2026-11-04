@@ -1,4 +1,4 @@
-# temp_firmware — top-level convenience Makefile.
+# amb_firmware — top-level convenience Makefile.
 #
 #   make flash         flash the firmware (button-less: enters download mode first)
 #   make enter-flash   only put the module into ROM download mode

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Put the TEMP module into ROM download mode for button-less flashing.
+"""Put the AMB module into ROM download mode for button-less flashing.
 
 Sends the protocol's `action / device / bootloader` command over the module's
 USB CDC port. The module answers `accepted` and, ~200 ms later, reboots into the

@@ -1,4 +1,4 @@
-# temp_firmware — Ambient temperature, humidity and vibration
+# amb_firmware — Ambient temperature, humidity and vibration
 
 Measures the ambient temperature/humidity and the telescope vibration. This board
 hosts only the two sensors (SHT31 + ADXL345) on the shared I2C bus; the focuser and
@@ -27,7 +27,7 @@ No 12 V sensor and no buttons — it is a sensor module only.
 | `environment` | Ambient temp/humidity from the SHT31 + dew point. | — |
 | `led` | Status LED (onboard RGB): green (solid) when healthy, green beacon on sensor fault. | `LED_GPIO` (RMT) |
 | `usb_cdc` | USB CDC-ACM transport (TinyUSB). | — |
-| `proto` | `proto=2`, `device_id="temp"`; handlers `capabilities`/`state`/`action`/`config`/`control`. | — |
+| `proto` | `proto=2`, `device_id="amb"`; handlers `capabilities`/`state`/`action`/`config`/`control`. | — |
 
 The protocol contract is documented in [`main/proto/README.md`](main/proto/README.md).
 

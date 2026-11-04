@@ -3,12 +3,12 @@
 #include "driver/gpio.h"
 
 /*
- * TEMP hardware configuration.
+ * AMB hardware configuration.
  */
 
 /* Temperature/vibration module identifier — reported in the serial protocol
  * `capabilities`. */
-#define DEVICE_NAME "TEMP"
+#define DEVICE_NAME "AMB"
 
 /* =========================================================================
  * Pin assignments

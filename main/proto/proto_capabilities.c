@@ -21,7 +21,7 @@ void proto_handle_capabilities(const char *req, uint32_t id, char *out, size_t c
     proto_buf_append(out, cap, &len,
         "{\"type\":\"capabilities\",\"id\":%lu,\"ok\":true,"
         "\"boot_id\":\"%s\",\"proto\":%d,"
-        "\"device_type\":\"accessories\",\"device_id\":\"temp\","
+        "\"device_type\":\"accessories\",\"device_id\":\"amb\","
         "\"name\":\"%s\",\"firmware_version\":\"0.1.0\","
         "\"capabilities\":{"
         "\"sensors\":{\"ambient\":\"SHT31\",\"vibration\":\"ADXL345\"}"

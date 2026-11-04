@@ -1,4 +1,4 @@
-# temp_firmware Development Rules
+# amb_firmware Development Rules
 
 Keep this file in a simple format so it can be read and edited quickly.
 
@@ -44,7 +44,7 @@ Desktop app (Go) (Alpaca/UI) → USB CDC-ACM → Proto → Sensors → I2C (hard
 Implemented: `i2c_bus` (shared I2C master bus), `sht31` (SHT31-D), `accelerometer`
 (ADXL345) + `vibration` (movement figures), `environment` (ambient
 temp/humidity + dew point), `led` (status LED: green), `usb_cdc` (transport)
-and `proto` (`proto=2` protocol, `device_id="temp"`, with
+and `proto` (`proto=2` protocol, `device_id="amb"`, with
 capabilities/state/action/config/control handlers). Board: ESP32-S3 Super Mini
 (4 MB flash, I2C GPIO8/9, onboard RGB status LED); `action/device/bootloader` enables
 button-less flashing.

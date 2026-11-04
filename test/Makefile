@@ -1,4 +1,4 @@
-# temp_firmware — flash helper
+# amb_firmware — flash helper
 #
 #   make flash         flash the firmware
 
