@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "esp_err.h"
 
@@ -8,7 +9,7 @@
  * ADXL345 accelerometer on the I2C bus (SDA = GPIO 8, SCL = GPIO 9).
  *
  * One sensor, with SDO tied to GND (address 0x53). Provides acceleration in g;
- * the tilt module turns it into tilt angles.
+ * the vibration module turns it into movement figures.
  */
 
 /* One physical reading, already converted to g. */
@@ -32,3 +33,12 @@ bool accelerometer_is_present(void);
  * if the sensor is absent or the I2C transaction fails.
  */
 esp_err_t accelerometer_read_sample(AccelSample *out);
+
+/*
+ * Read `n_samples` samples from the FIFO and convert them to g.
+ * Returns ESP_OK on success.
+ */
+esp_err_t accelerometer_read_fifo(AccelSample *samples, size_t n_samples);
+
+/* Number of samples currently available in the FIFO (0-32). */
+esp_err_t accelerometer_fifo_entries(uint8_t *out);

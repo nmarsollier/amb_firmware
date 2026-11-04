@@ -27,3 +27,18 @@
 /* Status LED — onboard RGB (WS2812), driven via RMT. GPIO 48 on the common
  * Super Mini (clone variants may use GPIO 21). */
 #define LED_GPIO        GPIO_NUM_48
+
+/* =========================================================================
+ * Vibration (ADXL345) — high-rate sampling + ISO 10816
+ * ========================================================================= */
+
+/* ADXL345 output data rate (100 Hz). */
+#define VIB_SAMPLE_RATE_HZ      100
+
+/* High-pass cutoff (Hz) applied to acceleration before integrating to velocity. */
+#define VIB_HP_CUTOFF_HZ        5.0f
+
+/* ISO 10816-1 zone boundaries for a Class II machine, velocity RMS (mm/s). */
+#define ISO10816_CLASS_AB       1.12f
+#define ISO10816_CLASS_BC       2.8f
+#define ISO10816_CLASS_CD       7.1f

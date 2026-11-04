@@ -10,8 +10,8 @@
 
 #include "environment.h"
 #include "led.h"
-#include "tilt.h"
 #include "usb_cdc.h"
+#include "vibration.h"
 
 static const char *TAG = "RUNTIME_SETUP";
 
@@ -31,18 +31,16 @@ void setup_init(void) {
 
     led_init();
 
-    /* Tilt (ADXL345) first, before the SHT31: the SHT31's clock stretching can
+    /* ADXL345 first, before the SHT31: the SHT31's clock stretching can
      * leave SCL held and corrupt the ADXL345's configuration. */
-    tilt_init();
+    vibration_init();
     environment_init();
 
-#if 0  /* TEMPORARY diagnostic: USB disabled to keep the console visible */
     /* USB CDC-ACM transport — the protocol is wired to it by proto_init(). */
     esp_err_t cdc_result = usb_cdc_init();
     if (cdc_result != ESP_OK) {
         ESP_LOGW(TAG, "USB CDC init failed: %s", esp_err_to_name(cdc_result));
     }
-#endif
 
     ESP_LOGI(TAG, "Board ready");
 }

@@ -7,12 +7,13 @@ idf_component_register(
 
         "accelerometer/accelerometer_init.c"
         "accelerometer/accelerometer_read.c"
+        "accelerometer/accelerometer_fifo.c"
 
         "sht31/sht31_init.c"
         "sht31/sht31_read.c"
 
         "environment/environment.c"
-        "tilt/tilt.c"
+        "vibration/vibration.c"
 
         "led/led_init.c"
         "led/led_set_state.c"
@@ -44,7 +45,7 @@ idf_component_register(
         "accelerometer"
         "sht31"
         "environment"
-        "tilt"
+        "vibration"
         "led"
         "usb_cdc"
         "proto"

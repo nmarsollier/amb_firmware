@@ -11,9 +11,9 @@ Keep this file in a simple format so it can be read and edited quickly.
 
 ## Project definition
 
-- Ambient temperature/humidity and tilt module for a Newtonian telescope, on
+- Ambient temperature/humidity and vibration module for a Newtonian telescope, on
   ESP32-S3.
-- Functions: ambient temperature/humidity (SHT31, I2C), tilt (ADXL345, I2C),
+- Functions: ambient temperature/humidity (SHT31, I2C), vibration (ADXL345, I2C),
   dew point (computed).
 - No 12 V sensor and no buttons — a sensor module only.
 - Status LED (onboard RGB/WS2812): green when healthy, green beacon on sensor fault.
@@ -32,7 +32,7 @@ Desktop app (Go) (Alpaca/UI) → USB CDC-ACM → Proto → Sensors → I2C (hard
 - **i2c_bus** (`main/i2c_bus/`) — shared I2C master bus (ADXL345 + SHT31).
 - **sht31** (`main/sht31/`) — SHT31-D over I2C (ambient temp + humidity).
 - **accelerometer** (`main/accelerometer/`) — ADXL345 over I2C.
-- **tilt** (`main/tilt/`) — telescope inclination (pitch/roll) from the ADXL345.
+- **vibration** (`main/vibration/`) — high-rate ADXL345: accel RMS/peak (milli-g) and velocity RMS/peak (µm/s), ISO 10816 zone.
 - **environment** (`main/environment/`) — ambient/humidity (SHT31) + dew point.
 - **led** (`main/led/`) — status LED (onboard RGB/WS2812, RMT): green (solid/beacon) from sensor health.
 - **usb_cdc** (`main/usb_cdc/`) — USB CDC-ACM transport.
@@ -42,7 +42,7 @@ Desktop app (Go) (Alpaca/UI) → USB CDC-ACM → Proto → Sensors → I2C (hard
 ## Current state
 
 Implemented: `i2c_bus` (shared I2C master bus), `sht31` (SHT31-D), `accelerometer`
-(ADXL345) + `tilt` (telescope inclination), `environment` (ambient
+(ADXL345) + `vibration` (movement figures), `environment` (ambient
 temp/humidity + dew point), `led` (status LED: green), `usb_cdc` (transport)
 and `proto` (`proto=2` protocol, `device_id="temp"`, with
 capabilities/state/action/config/control handlers). Board: ESP32-S3 Super Mini

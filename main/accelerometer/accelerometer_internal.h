@@ -17,10 +17,17 @@
 
 #define ADXL345_REG_DEVID         0x00
 #define ADXL345_DEVID_EXPECTED    0xE5
+#define ADXL345_REG_BW_RATE       0x2C
 #define ADXL345_REG_DATA_FORMAT   0x31
 #define ADXL345_REG_POWER_CTL     0x2D
 #define ADXL345_POWER_CTL_MEASURE 0x08
 #define ADXL345_REG_DATAX0        0x32
+#define ADXL345_REG_FIFO_CTL      0x38
+#define ADXL345_REG_FIFO_STATUS   0x39
+
+#define ADXL345_BW_RATE_100HZ     0x0A
+#define ADXL345_FIFO_MODE_STREAM  0x80
+#define ADXL345_FIFO_MAX          32
 
 /* ±2 g, 10-bit: 256 LSB per g. */
 #define ADXL345_LSB_PER_G         256.0f

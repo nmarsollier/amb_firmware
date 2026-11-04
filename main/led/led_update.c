@@ -15,10 +15,10 @@
 #include "led_internal.h"
 
 #include "environment.h"
-#include "tilt.h"
+#include "vibration.h"
 
 void led_update(void) {
-    bool sensor_fault = !environment_ambient_valid() || !tilt_get_healthy();
+    bool sensor_fault = !environment_ambient_valid() || !vibration_get_healthy();
 
     led_set_state(sensor_fault ? LED_STATE_ERROR : LED_STATE_NORMAL);
 }

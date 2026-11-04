@@ -52,6 +52,6 @@ Broken-out GPIOs: GP1–GP13 (plus UART0 TX/RX). The native USB D+/D- pins
 - I2C: SDA = GPIO8, SCL = GPIO9 — both broken out, no conflict with flash/PSRAM.
 - Status LED: onboard RGB (WS2812) on GPIO48, driven via RMT (green = healthy,
   green beacon = fault).
-- ADXL345: 100 Hz, direct read over the shared 100 kHz I2C bus (pitch/roll).
+- ADXL345: 100 Hz FIFO stream mode over the shared 100 kHz I2C bus (vibration).
 - USB CDC-ACM: native USB on the USB-C connector (GPIO19/20), driven by TinyUSB.
 - Flash size: 4 MB → `CONFIG_ESPTOOLPY_FLASHSIZE="4MB"`.

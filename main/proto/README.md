@@ -1,6 +1,6 @@
-# Temperature/tilt protocol (USB CDC-ACM)
+# Temperature/vibration protocol (USB CDC-ACM)
 
-Serial contract between the PC (Go gateway) and the temperature/tilt module's
+Serial contract between the PC (Go gateway) and the temperature/vibration module's
 ESP32-S3. It uses the unified transport and identifies itself through the
 `capabilities` handshake (`device_type="accessories"`, `device_id="temp"`, `proto=2`).
 
@@ -31,7 +31,7 @@ Response (`ok:true` + `data`, or `ok:false` + `error`):
 ```
 
 - `type`: `capabilities` | `state` | `config` | `control` | `action`.
-- `target`: `device` | `environment` | `tilt`.
+- `target`: `device` | `environment` | `vibration` | `orientation`.
 - `action` (for `type=action`) or `op` (for control/config) names the operation.
 - `params` is an object; `id` is a non-zero uint32 (0 is reserved for events, not yet
   implemented); `session`/`boot_id` are strings.
@@ -47,7 +47,7 @@ instead of the session/data envelope.
  "device_type":"accessories","device_id":"temp",
  "name":"TEMP","firmware_version":"0.1.0",
  "capabilities":{
-   "sensors":{"ambient":"SHT31","tilt":"ADXL345"}}}
+   "sensors":{"ambient":"SHT31","vibration":"ADXL345"}}}
 ```
 
 - `device_type`: `mount` | `accessories` — the discriminator.
@@ -60,7 +60,8 @@ instead of the session/data envelope.
 | `capabilities` | Unified handshake header + sensor capabilities (real). |
 | `state / device` | `health`, `sensor_health`, `reset_reason` (real). |
 | `state / environment` | Ambient only: `ambient_c`, `humidity_pct`, `dew_point_c` (real); mirror/delta/margin are always `null`. |
-| `state / tilt` | Pitch/roll (degrees) from the ADXL345 gravity vector. |
+| `state / vibration` | Accel RMS/peak (milli-g) and velocity RMS/peak (µm/s) since the previous read, plus ISO 10816 zone (100 Hz ADXL345). |
+| `state / orientation` | Pitch/roll (degrees) and the gravity vector (g) from the ADXL345. |
 | `config / <group> / get` | Read-only mock (empty config); `set` → `NOT_SUPPORTED`. |
 | `action / device / restart` | Deferred normal reboot (real). |
 | `action / device / bootloader` | Reboot into ROM download mode (real, for button-less flashing). |
@@ -105,10 +106,41 @@ reports the subsystem's own condition:
 A `state` request **always answers**: a sensor fault is returned as an error state,
 never as a hang or a fabricated reading (no 0 °C / 0 m/s² placeholders).
 
-`state/tilt` reports the current pitch/roll angles (degrees) computed from the
-ADXL345 gravity vector, averaged over a 1-second window.
+`state/vibration` is read-and-reset: each response reports the figures accumulated
+since the previous `state/vibration` request (`processing:"since_last_read"`), then
+resets the accumulators. The `*_peak_*` fields are latching maxima over that
+period, so they reveal whether a large vibration happened between two reads.
+
+Response (`state / vibration`):
+
+```json
+{"proto":2,"type":"state","id":42,"session":"g-7f2a","boot_id":"0e86a327","ok":true,
+ "data":{"enabled":true,"valid":true,"error":null,
+ "sample_rate_hz":100,
+ "rms_x":2.13,"rms_y":1.87,"rms_z":3.01,"rms_total":4.13,
+ "accel_peak_x":8.4,"accel_peak_y":6.2,"accel_peak_z":12.7,"accel_peak_total":16.3,
+ "vel_rms_x":340.2,"vel_rms_y":291.4,"vel_rms_z":512.7,"vel_rms_total":680.9,
+ "vel_peak_x":1240.5,"vel_peak_y":980.1,"vel_peak_z":2100.3,"vel_peak_total":2600.8,
+ "iso_zone":"A","processing":"since_last_read"}}
+```
+
+Units: `rms_*` / `accel_peak_*` are in **milli-g**; `vel_rms_*` / `vel_peak_*` are
+in **µm/s**. `iso_zone` is `A`/`B`/`C`/`D` (ISO 10816-1, Class II velocity-RMS
+boundaries).
+
+`state/orientation` reports the current rotation angles and the gravity vector:
+
+```json
+{"proto":2,"type":"state","id":42,"session":"g-7f2a","boot_id":"0e86a327","ok":true,
+ "data":{"enabled":true,"error":null,
+ "pitch_deg":-20.70,"roll_deg":41.41,
+ "ax_g":-0.353,"ay_g":0.661,"az_g":0.662}}
+```
+
+`pitch_deg`/`roll_deg` are the X/Y-axis tilt from horizontal; `ax_g`/`ay_g`/`az_g`
+are the gravity vector in g (magnitude ~1).
 
 ## Pending (out of this iteration)
 
 Events/subscription and push; real lease/heartbeat; `config/set` with persistence;
-`environment/refresh`, `tilt/calibrate`.
+`environment/refresh`, `vibration/enable|baseline|capture`.

@@ -24,7 +24,7 @@ void proto_handle_capabilities(const char *req, uint32_t id, char *out, size_t c
         "\"device_type\":\"accessories\",\"device_id\":\"temp\","
         "\"name\":\"%s\",\"firmware_version\":\"0.1.0\","
         "\"capabilities\":{"
-        "\"sensors\":{\"ambient\":\"SHT31\",\"tilt\":\"ADXL345\"}"
+        "\"sensors\":{\"ambient\":\"SHT31\",\"vibration\":\"ADXL345\"}"
         "}}",
         (unsigned long) id, boot, PROTO_VERSION, DEVICE_NAME);
 }
