@@ -1,10 +1,10 @@
 /* Accelerometer — accelerometer_init.c
  *
- * Purpose: bring up the ADXL345 sensor on the shared I2C bus.
+ * Purpose: bring up the ADXL345 sensor on its own I2C bus.
  *
- * Attaches a device handle for address 0x53 to the shared bus (i2c_bus),
- * probes it and configures it if it answers. A missing sensor is not fatal:
- * the vibration module simply reports itself unavailable.
+ * Creates a bus for the ADXL345 pins, attaches a device handle for address
+ * 0x53, probes it and configures it if it answers. A missing sensor is not
+ * fatal: the vibration module simply reports itself unavailable.
  */
 #include "accelerometer_internal.h"
 
@@ -56,11 +56,12 @@ esp_err_t accelerometer_init(void) {
     accel_sensor.dev_handle = NULL;
     accel_sensor.present    = false;
 
-    esp_err_t err = i2c_bus_init();
+    i2c_master_bus_handle_t bus = NULL;
+    esp_err_t err = i2c_bus_create(ADXL345_I2C_PORT, ADXL345_I2C_SDA_GPIO,
+                                   ADXL345_I2C_SCL_GPIO, &bus);
     if (err != ESP_OK) {
         return err;
     }
-    i2c_master_bus_handle_t bus = i2c_bus_get();
 
     i2c_device_config_t dev_config = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,

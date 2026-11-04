@@ -20,9 +20,13 @@
 /* SHT31-D I2C address (ADDR pin tied to GND). Use 0x45 when ADDR is tied high. */
 #define SHT31_ADDR      0x44
 
-/* I2C bus — shared by the ADXL345 and the SHT31. */
-#define I2C_SDA_GPIO    GPIO_NUM_8
-#define I2C_SCL_GPIO    GPIO_NUM_9
+/* I2C bus — SHT31-D (environment), on its own bus. */
+#define SHT31_I2C_SDA_GPIO    GPIO_NUM_8
+#define SHT31_I2C_SCL_GPIO    GPIO_NUM_9
+
+/* I2C bus — ADXL345 (vibration), on its own bus, on pins separate from the SHT31. */
+#define ADXL345_I2C_SDA_GPIO  GPIO_NUM_12
+#define ADXL345_I2C_SCL_GPIO  GPIO_NUM_13
 
 /* Status LED — onboard RGB (WS2812), driven via RMT. GPIO 48 on the common
  * Super Mini (clone variants may use GPIO 21). */

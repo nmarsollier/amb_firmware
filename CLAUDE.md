@@ -29,7 +29,7 @@ Desktop app (Go) (Alpaca/UI) → USB CDC-ACM → Proto → Sensors → I2C (hard
 ```
 
 - **config** (`main/config/`) — single source of truth for pins and build constants.
-- **i2c_bus** (`main/i2c_bus/`) — shared I2C master bus (ADXL345 + SHT31).
+- **i2c_bus** (`main/i2c_bus/`) — I2C master bus factory (one bus per sensor: SHT31 on GPIO8/9, ADXL345 on GPIO12/13).
 - **sht31** (`main/sht31/`) — SHT31-D over I2C (ambient temp + humidity).
 - **accelerometer** (`main/accelerometer/`) — ADXL345 over I2C.
 - **vibration** (`main/vibration/`) — high-rate ADXL345: accel RMS/peak (milli-g) and velocity RMS/peak (µm/s), ISO 10816 zone.
@@ -41,7 +41,7 @@ Desktop app (Go) (Alpaca/UI) → USB CDC-ACM → Proto → Sensors → I2C (hard
 
 ## Current state
 
-Implemented: `i2c_bus` (shared I2C master bus), `sht31` (SHT31-D), `accelerometer`
+Implemented: `i2c_bus` (I2C master bus factory), `sht31` (SHT31-D), `accelerometer`
 (ADXL345) + `vibration` (movement figures), `environment` (ambient
 temp/humidity + dew point), `led` (status LED: green), `usb_cdc` (transport)
 and `proto` (`proto=2` protocol, `device_id="amb"`, with

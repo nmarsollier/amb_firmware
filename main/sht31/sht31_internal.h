@@ -10,6 +10,7 @@
 
 /* ── I2C configuration ────────────────────────────────────── */
 
+#define SHT31_I2C_PORT    I2C_NUM_0
 #define SHT31_CLK_HZ      100000    /* 100 kHz standard mode */
 #define SHT31_TIMEOUT_MS  100
 

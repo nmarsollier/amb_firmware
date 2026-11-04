@@ -1,8 +1,8 @@
 # amb_firmware — Ambient temperature, humidity and vibration
 
 Measures the ambient temperature/humidity and the telescope vibration. This board
-hosts only the two sensors (SHT31 + ADXL345) on the shared I2C bus; the focuser and
-the fan live in their own boards (`eaf_firmware` and `fan_firmware`).
+hosts only the two sensors (SHT31 + ADXL345), each on its own I2C bus; the focuser
+and the fan live in their own boards (`eaf_firmware` and `fan_firmware`).
 
 ## Functionality
 
@@ -20,9 +20,9 @@ No 12 V sensor and no buttons — it is a sensor module only.
 
 | Module | Role | Pins |
 |---|---|---|
-| `i2c_bus` | Shared I2C master bus (ADXL345 + SHT31). | SDA `I2C_SDA_GPIO`, SCL `I2C_SCL_GPIO` |
-| `sht31` | SHT31-D over I2C (driver: init, probe, read). | SDA `I2C_SDA_GPIO`, SCL `I2C_SCL_GPIO`, addr `SHT31_ADDR` |
-| `accelerometer` | ADXL345 over I2C (driver: init, probe, read). | SDA `I2C_SDA_GPIO`, SCL `I2C_SCL_GPIO`, addr `ADXL345_ADDR` |
+| `i2c_bus` | I2C master bus factory (one bus per sensor). | — |
+| `sht31` | SHT31-D over I2C (driver: init, probe, read). | SDA `SHT31_I2C_SDA_GPIO`, SCL `SHT31_I2C_SCL_GPIO`, addr `SHT31_ADDR` |
+| `accelerometer` | ADXL345 over I2C (driver: init, probe, read). | SDA `ADXL345_I2C_SDA_GPIO`, SCL `ADXL345_I2C_SCL_GPIO`, addr `ADXL345_ADDR` |
 | `vibration` | High-rate (100 Hz) ADXL345: accel RMS/peak (milli-g) and velocity RMS/peak (µm/s), reset on each read. | — |
 | `environment` | Ambient temp/humidity from the SHT31 + dew point. | — |
 | `led` | Status LED (onboard RGB): green (solid) when healthy, green beacon on sensor fault. | `LED_GPIO` (RMT) |
@@ -42,7 +42,7 @@ The protocol contract is documented in [`main/proto/README.md`](main/proto/READM
 ## Ambient temperature and humidity — SHT31
 
 - I2C bus, usual address 0x44 (`SHT31_ADDR`).
-- SDA/SCL are shared with the ADXL345.
+- SDA/SCL on their own bus (GPIO 8 / 9), separate from the ADXL345.
 - Must be placed in a ventilated area, away from the ESP32 and regulator heat.
 - Provides ambient temperature and humidity (for the dew point, reported to the
   gateway).

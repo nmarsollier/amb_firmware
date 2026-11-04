@@ -1,17 +1,16 @@
 #pragma once
 
+#include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_err.h"
 
 /*
- * Shared I2C bus — owns the single master bus (SDA = GPIO 8, SCL = GPIO 9)
- * that the ADXL345 (vibration) and the SHT31 (environment) attach to.
+ * I2C master bus factory.
  *
- * i2c_bus_init() is idempotent: the bus is created on the first call, and each
- * driver calls it before adding its own device handle.
+ * Creates an I2C master bus on the given port and pins. The SHT31 and the
+ * ADXL345 are wired to different pins, so each driver creates its own bus
+ * during init with the pins from config.
  */
 
-esp_err_t i2c_bus_init(void);
-
-/* Handle to the shared bus; NULL if i2c_bus_init() failed. */
-i2c_master_bus_handle_t i2c_bus_get(void);
+esp_err_t i2c_bus_create(i2c_port_t port, gpio_num_t sda, gpio_num_t scl,
+                         i2c_master_bus_handle_t *out_bus);

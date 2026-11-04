@@ -10,8 +10,9 @@
 
 /* ── I2C configuration ────────────────────────────────────── */
 
-#define ACCEL_CLK_HZ      100000     /* 100 kHz standard mode */
-#define ACCEL_TIMEOUT_MS  100
+#define ADXL345_I2C_PORT   I2C_NUM_1
+#define ACCEL_CLK_HZ       100000     /* 100 kHz standard mode */
+#define ACCEL_TIMEOUT_MS   100
 
 /* ── ADXL345 registers ────────────────────────────────────── */
 
