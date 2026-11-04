@@ -46,6 +46,16 @@ bool proto_json_get_bool(const char *json, const char *key, bool *out);
 bool proto_json_get_object(const char *json, const char *key, char *out, size_t cap);
 /* Escape a string for embedding in JSON output; returns false if truncated. */
 bool proto_json_escape(const char *src, char *out, size_t cap);
+/* Read an optional string field.  True when absent or fully decoded into `out`;
+ * false when present but too long (or not a string).  Callers reject with
+ * INVALID_ARGUMENT rather than use the silently-truncated prefix. */
+static inline bool proto_json_get_string_field(const char *json, const char *key,
+                                               char *out, size_t cap) {
+    if (!proto_json_has_key(json, key)) {
+        return true;
+    }
+    return proto_json_get_string(json, key, out, cap);
+}
 bool proto_buf_append(char *buf, size_t cap, size_t *len, const char *fmt, ...)
     __attribute__((format(printf, 4, 5)));
 

@@ -10,8 +10,14 @@
 void proto_handle_config(const char *req, uint32_t id, char *out, size_t cap) {
     char op[PROTO_MAX_ACTION_LEN] = {0};
     char session[PROTO_MAX_SESSION_LEN] = {0};
-    proto_json_get_string(req, "op", op, sizeof(op));
-    proto_json_get_string(req, "session", session, sizeof(session));
+    if (!proto_json_get_string_field(req, "op", op, sizeof(op)) ||
+        !proto_json_get_string_field(req, "session", session, sizeof(session))) {
+        size_t len = 0;
+        out[0] = '\0';
+        proto_env_begin(out, cap, &len, "config", id, session, false);
+        proto_env_error(out, cap, &len, "INVALID_ARGUMENT", "string field too long");
+        return;
+    }
 
     size_t len = 0;
     out[0] = '\0';

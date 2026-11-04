@@ -8,9 +8,13 @@
 #include "led_internal.h"
 
 #include "esp_err.h"
+#include "esp_log.h"
 
 rmt_channel_handle_t led_tx_chan;
 rmt_encoder_handle_t led_encoder;
+SemaphoreHandle_t led_mutex;
+
+static const char *TAG = "LED_INIT";
 
 void led_init(void) {
     rmt_tx_channel_config_t tx_config = {
@@ -39,6 +43,11 @@ void led_init(void) {
         .flags = { .msb_first = true },
     };
     ESP_ERROR_CHECK(rmt_new_bytes_encoder(&enc_config, &led_encoder));
+
+    led_mutex = xSemaphoreCreateMutex();
+    if (led_mutex == NULL) {
+        ESP_LOGE(TAG, "failed to create LED mutex");
+    }
 
     /* Set the initial NORMAL color; led_set_state() skips it because the default
      * state is already NORMAL, so the WS2812 would otherwise never light. */

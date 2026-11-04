@@ -44,6 +44,14 @@ static const char *TAG = "VIBRATION";
 #define GRAV_TAU_S              1.0f
 #define GRAV_ALPHA              (VIB_DT / GRAV_TAU_S)
 
+/* Leaky velocity integrator.  A gravity reorientation feeds a decaying transient
+ * into the integrator, which would otherwise leave a permanent DC velocity
+ * offset (see #5).  A small leak — time constant 1 s — removes that offset once
+ * the transient decays, without materially affecting vibration frequencies well
+ * above 1/(2π·τ) ≈ 0.16 Hz. */
+#define VIB_VEL_TAU_S           1.0f
+#define VIB_VEL_LEAK            (1.0f - VIB_DT / VIB_VEL_TAU_S)
+
 /* ── State (the accumulators are guarded by s_mutex) ────────── */
 
 static SemaphoreHandle_t s_mutex;
@@ -81,7 +89,7 @@ static float process_axis(float a, float *hp_in, float *hp_out, float *vel,
     float hp = VIB_HP_ALPHA * (*hp_out + a - *hp_in);
     *hp_in = a;
     *hp_out = hp;
-    *vel += hp * VIB_DT;
+    *vel = *vel * VIB_VEL_LEAK + hp * VIB_DT;
 
     *sum_a2 += (double) hp * hp;
     *sum_v2 += (double) (*vel) * (*vel);

@@ -15,8 +15,8 @@
 #include "sht31.h"
 #include "vibration.h"
 
-static void get_session(const char *req, char *out, size_t cap) {
-    proto_json_get_string(req, "session", out, cap);
+static bool get_session(const char *req, char *out, size_t cap) {
+    return proto_json_get_string_field(req, "session", out, cap);
 }
 
 static const char *reset_reason_str(void) {
@@ -191,8 +191,14 @@ static void state_orientation(char *out, size_t cap, uint32_t id, const char *se
 void proto_handle_state(const char *req, uint32_t id, char *out, size_t cap) {
     char target[PROTO_MAX_TARGET_LEN] = {0};
     char session[PROTO_MAX_SESSION_LEN] = {0};
-    proto_json_get_string(req, "target", target, sizeof(target));
-    get_session(req, session, sizeof(session));
+    if (!proto_json_get_string_field(req, "target", target, sizeof(target)) ||
+        !get_session(req, session, sizeof(session))) {
+        size_t len = 0;
+        out[0] = '\0';
+        proto_env_begin(out, cap, &len, "state", id, session, false);
+        proto_env_error(out, cap, &len, "INVALID_ARGUMENT", "string field too long");
+        return;
+    }
 
     if (strcmp(target, "device") == 0) {
         state_device(out, cap, id, session);

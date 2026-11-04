@@ -41,12 +41,13 @@ void proto_dispatch(const char *body) {
         return;
     }
 
-    proto_json_get_string(body, "type", type, sizeof(type));
-    proto_json_get_string(body, "session", session, sizeof(session));
-
-    {
-        char target[PROTO_MAX_TARGET_LEN] = {0};
-        proto_json_get_string(body, "target", target, sizeof(target));
+    /* Reject overlong string fields rather than silently truncating them (which
+     * would make two distinct sessions with a common prefix indistinguishable). */
+    if (!proto_json_get_string_field(body, "type", type, sizeof(type)) ||
+        !proto_json_get_string_field(body, "session", session, sizeof(session))) {
+        ESP_LOGW(TAG, "rejecting overlong string field");
+        send_error("error", 0, "", "INVALID_ARGUMENT", "string field too long");
+        return;
     }
 
     /* `id` is optional; when present it must be a valid unsigned integer

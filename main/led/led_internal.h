@@ -4,6 +4,8 @@
 #include "config.h"
 #include "driver/rmt_encoder.h"
 #include "driver/rmt_tx.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 /* ── WS2812 RMT configuration ─────────────────────────────── */
 
@@ -30,6 +32,10 @@
 extern LedState led_current_state;
 extern rmt_channel_handle_t led_tx_chan;
 extern rmt_encoder_handle_t led_encoder;
+
+/* Serialises led_set_color() so the persistent RMT buffer is never overwritten
+ * while a transmission is still encoding from it. */
+extern SemaphoreHandle_t led_mutex;
 
 /* ── Internal helpers ─────────────────────────────────────── */
 

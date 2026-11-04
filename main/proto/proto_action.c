@@ -16,8 +16,8 @@
 #include "soc/rtc_cntl_reg.h"
 #include "soc/soc.h"
 
-static void get_session(const char *req, char *out, size_t cap) {
-    proto_json_get_string(req, "session", out, cap);
+static bool get_session(const char *req, char *out, size_t cap) {
+    return proto_json_get_string_field(req, "session", out, cap);
 }
 
 /* Delayed reboot: the handler returns and the response is flushed before this. */
@@ -98,9 +98,13 @@ void proto_handle_action(const char *req, uint32_t id, char *out, size_t cap) {
     char action[PROTO_MAX_ACTION_LEN] = {0};
     char session[PROTO_MAX_SESSION_LEN] = {0};
 
-    proto_json_get_string(req, "target", target, sizeof(target));
-    proto_json_get_string(req, "action", action, sizeof(action));
-    get_session(req, session, sizeof(session));
+    if (!proto_json_get_string_field(req, "target", target, sizeof(target)) ||
+        !proto_json_get_string_field(req, "action", action, sizeof(action)) ||
+        !get_session(req, session, sizeof(session))) {
+        emit_err(out, cap, "action", id, session, "INVALID_ARGUMENT",
+                 "string field too long");
+        return;
+    }
 
     /* Idempotency: a retried action id replays the original result instead of
      * re-executing (which would schedule a second reboot timer). */
