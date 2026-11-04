@@ -8,6 +8,8 @@
  */
 #include "accelerometer_internal.h"
 
+#include <stddef.h>
+
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -42,10 +44,29 @@ static esp_err_t configure_sensor(AccelSensor *sensor) {
     }
 
     /* ±2 g, 10-bit, 100 Hz, FIFO stream mode. */
-    accelerometer_write_register(sensor, ADXL345_REG_DATA_FORMAT, 0x00);
-    accelerometer_write_register(sensor, ADXL345_REG_BW_RATE, ADXL345_BW_RATE_100HZ);
-    accelerometer_write_register(sensor, ADXL345_REG_FIFO_CTL, ADXL345_FIFO_MODE_STREAM);
-    accelerometer_write_register(sensor, ADXL345_REG_POWER_CTL, ADXL345_POWER_CTL_MEASURE);
+    static const struct { uint8_t reg; uint8_t val; } cfg[] = {
+        { ADXL345_REG_DATA_FORMAT, 0x00 },
+        { ADXL345_REG_BW_RATE, ADXL345_BW_RATE_100HZ },
+        { ADXL345_REG_FIFO_CTL, ADXL345_FIFO_MODE_STREAM },
+        { ADXL345_REG_POWER_CTL, ADXL345_POWER_CTL_MEASURE },
+    };
+    for (size_t i = 0; i < sizeof(cfg) / sizeof(cfg[0]); i++) {
+        esp_err_t err = accelerometer_write_register(sensor, cfg[i].reg, cfg[i].val);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "addr 0x%02X: write reg 0x%02X failed: %s",
+                     sensor->address, cfg[i].reg, esp_err_to_name(err));
+            return err;
+        }
+    }
+
+    /* Verify the measurement-mode enable took effect — the most critical write. */
+    uint8_t power = 0;
+    if (accelerometer_read_register(sensor, ADXL345_REG_POWER_CTL, &power) != ESP_OK ||
+        (power & ADXL345_POWER_CTL_MEASURE) == 0) {
+        ESP_LOGE(TAG, "addr 0x%02X: measurement mode did not take effect (0x%02X)",
+                 sensor->address, power);
+        return ESP_ERR_INVALID_STATE;
+    }
 
     ESP_LOGI(TAG, "ADXL345 at 0x%02X ready", sensor->address);
     return ESP_OK;

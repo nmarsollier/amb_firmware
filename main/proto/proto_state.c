@@ -4,11 +4,12 @@
  */
 #include "proto_internal.h"
 
+#include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "esp_system.h"
 
-#include "accelerometer.h"
 #include "config.h"
 #include "environment.h"
 #include "sht31.h"
@@ -35,7 +36,9 @@ static const char *reset_reason_str(void) {
 /* ── state / device ────────────────────────────────────────── */
 
 static void state_device(char *out, size_t cap, uint32_t id, const char *session) {
-    bool sensor_fault = !accelerometer_is_present() || !sht31_is_present();
+    /* Current sensor health, not just boot-time presence: the LED uses the same
+     * signals so the protocol and the status LED can never disagree. */
+    bool sensor_fault = !vibration_get_healthy() || !environment_ambient_valid();
 
     size_t len = 0;
     out[0] = '\0';
@@ -51,32 +54,64 @@ static void state_device(char *out, size_t cap, uint32_t id, const char *session
 /* ── state / environment (ambient only) ────────────────────── */
 
 static void state_environment(char *out, size_t cap, uint32_t id, const char *session) {
-    bool ambient_valid = environment_ambient_valid();
+    EnvironmentReading e = environment_get_reading();
 
     size_t len = 0;
     out[0] = '\0';
     proto_env_begin(out, cap, &len, "state", id, session, true);
 
-    if (!ambient_valid) {
+    const char *error = NULL;
+    if (!sht31_is_present()) {
+        error = "SENSOR_ABSENT";
+    } else if (!e.valid) {
+        error = "SENSOR_FAULT";
+    }
+
+    if (error != NULL) {
         proto_buf_append(out, cap, &len,
-            ",\"data\":{\"error\":\"SENSOR_ABSENT\",\"ambient_c\":null,"
+            ",\"data\":{\"error\":\"%s\",\"ambient_c\":null,"
             "\"humidity_pct\":null,\"mirror_c\":null,\"dew_point_c\":null,"
-            "\"mirror_ambient_delta_c\":null,\"mirror_dew_margin_c\":null}}");
+            "\"mirror_ambient_delta_c\":null,\"mirror_dew_margin_c\":null}}",
+            error);
         return;
+    }
+
+    /* The dew point can be non-finite (e.g. humidity exactly zero); report it
+     * as null rather than emitting `nan`/`inf`, which is not valid JSON. */
+    char dew_str[32];
+    if (isfinite(e.dew_point_c)) {
+        snprintf(dew_str, sizeof(dew_str), "%.2f", e.dew_point_c);
+    } else {
+        snprintf(dew_str, sizeof(dew_str), "null");
     }
 
     proto_buf_append(out, cap, &len,
         ",\"data\":{\"error\":null,\"ambient_c\":%.2f,\"humidity_pct\":%.2f,"
-        "\"mirror_c\":null,\"dew_point_c\":%.2f,"
+        "\"mirror_c\":null,\"dew_point_c\":%s,"
         "\"mirror_ambient_delta_c\":null,\"mirror_dew_margin_c\":null}}",
-        environment_get_ambient_c(), environment_get_humidity_pct(),
-        environment_get_dew_point_c());
+        e.ambient_c, e.humidity_pct, dew_str);
 }
 
 /* ── state / vibration ─────────────────────────────────────── */
 
+/* Emit the vibration response with every metric null.  Never uses `%c` for the
+ * zone here, so a null zone cannot truncate the JSON (see #3). */
+static void emit_vibration_nulls(char *out, size_t cap, size_t *len,
+                                 bool enabled, const char *error_json) {
+    proto_buf_append(out, cap, len,
+        ",\"data\":{\"enabled\":%s,\"valid\":false,\"error\":%s,"
+        "\"sample_rate_hz\":null,"
+        "\"rms_x\":null,\"rms_y\":null,\"rms_z\":null,\"rms_total\":null,"
+        "\"accel_peak_x\":null,\"accel_peak_y\":null,\"accel_peak_z\":null,\"accel_peak_total\":null,"
+        "\"vel_rms_x\":null,\"vel_rms_y\":null,\"vel_rms_z\":null,\"vel_rms_total\":null,"
+        "\"vel_peak_x\":null,\"vel_peak_y\":null,\"vel_peak_z\":null,\"vel_peak_total\":null,"
+        "\"iso_zone\":null,\"processing\":\"since_last_read\"}}",
+        enabled ? "true" : "false", error_json);
+}
+
 static void state_vibration(char *out, size_t cap, uint32_t id, const char *session) {
     bool enabled = vibration_get_enabled();
+    bool healthy = vibration_get_healthy();
     VibrationReading r;
     vibration_take_reading(&r);
 
@@ -85,38 +120,42 @@ static void state_vibration(char *out, size_t cap, uint32_t id, const char *sess
     proto_env_begin(out, cap, &len, "state", id, session, true);
 
     if (!enabled) {
-        proto_buf_append(out, cap, &len,
-            ",\"data\":{\"enabled\":false,\"valid\":false,\"error\":\"SENSOR_ABSENT\","
-            "\"sample_rate_hz\":null,"
-            "\"rms_x\":null,\"rms_y\":null,\"rms_z\":null,\"rms_total\":null,"
-            "\"accel_peak_x\":null,\"accel_peak_y\":null,\"accel_peak_z\":null,\"accel_peak_total\":null,"
-            "\"vel_rms_x\":null,\"vel_rms_y\":null,\"vel_rms_z\":null,\"vel_rms_total\":null,"
-            "\"vel_peak_x\":null,\"vel_peak_y\":null,\"vel_peak_z\":null,\"vel_peak_total\":null,"
-            "\"iso_zone\":null}}");
-    } else {
-        proto_buf_append(out, cap, &len,
-            ",\"data\":{\"enabled\":true,\"valid\":%s,\"error\":null,"
-            "\"sample_rate_hz\":%d,"
-            "\"rms_x\":%.3f,\"rms_y\":%.3f,\"rms_z\":%.3f,\"rms_total\":%.3f,"
-            "\"accel_peak_x\":%.3f,\"accel_peak_y\":%.3f,\"accel_peak_z\":%.3f,\"accel_peak_total\":%.3f,"
-            "\"vel_rms_x\":%.3f,\"vel_rms_y\":%.3f,\"vel_rms_z\":%.3f,\"vel_rms_total\":%.3f,"
-            "\"vel_peak_x\":%.3f,\"vel_peak_y\":%.3f,\"vel_peak_z\":%.3f,\"vel_peak_total\":%.3f,"
-            "\"iso_zone\":\"%c\","
-            "\"processing\":\"since_last_read\"}}",
-            r.valid ? "true" : "false",
-            VIB_SAMPLE_RATE_HZ,
-            r.rms_x, r.rms_y, r.rms_z, r.rms_total,
-            r.accel_peak_x, r.accel_peak_y, r.accel_peak_z, r.accel_peak_total,
-            r.vel_rms_x, r.vel_rms_y, r.vel_rms_z, r.vel_rms_total,
-            r.vel_peak_x, r.vel_peak_y, r.vel_peak_z, r.vel_peak_total,
-            r.iso_zone);
+        emit_vibration_nulls(out, cap, &len, false, "\"SENSOR_ABSENT\"");
+        return;
     }
+    if (!healthy) {
+        /* Present at boot but currently failing reads. */
+        emit_vibration_nulls(out, cap, &len, true, "\"SENSOR_FAULT\"");
+        return;
+    }
+    if (!r.valid) {
+        /* No samples accumulated since the previous read — not a fault. */
+        emit_vibration_nulls(out, cap, &len, true, "null");
+        return;
+    }
+
+    proto_buf_append(out, cap, &len,
+        ",\"data\":{\"enabled\":true,\"valid\":true,\"error\":null,"
+        "\"sample_rate_hz\":%d,"
+        "\"rms_x\":%.3f,\"rms_y\":%.3f,\"rms_z\":%.3f,\"rms_total\":%.3f,"
+        "\"accel_peak_x\":%.3f,\"accel_peak_y\":%.3f,\"accel_peak_z\":%.3f,\"accel_peak_total\":%.3f,"
+        "\"vel_rms_x\":%.3f,\"vel_rms_y\":%.3f,\"vel_rms_z\":%.3f,\"vel_rms_total\":%.3f,"
+        "\"vel_peak_x\":%.3f,\"vel_peak_y\":%.3f,\"vel_peak_z\":%.3f,\"vel_peak_total\":%.3f,"
+        "\"iso_zone\":\"%c\","
+        "\"processing\":\"since_last_read\"}}",
+        VIB_SAMPLE_RATE_HZ,
+        r.rms_x, r.rms_y, r.rms_z, r.rms_total,
+        r.accel_peak_x, r.accel_peak_y, r.accel_peak_z, r.accel_peak_total,
+        r.vel_rms_x, r.vel_rms_y, r.vel_rms_z, r.vel_rms_total,
+        r.vel_peak_x, r.vel_peak_y, r.vel_peak_z, r.vel_peak_total,
+        r.iso_zone);
 }
 
 /* ── state / orientation ──────────────────────────────────── */
 
 static void state_orientation(char *out, size_t cap, uint32_t id, const char *session) {
     bool enabled = vibration_get_enabled();
+    bool healthy = vibration_get_healthy();
     OrientationReading o;
     vibration_get_orientation(&o);
 
@@ -124,18 +163,27 @@ static void state_orientation(char *out, size_t cap, uint32_t id, const char *se
     out[0] = '\0';
     proto_env_begin(out, cap, &len, "state", id, session, true);
 
+    const char *error = NULL;
     if (!enabled) {
-        proto_buf_append(out, cap, &len,
-            ",\"data\":{\"enabled\":false,\"error\":\"SENSOR_ABSENT\","
-            "\"pitch_deg\":null,\"roll_deg\":null,"
-            "\"ax_g\":null,\"ay_g\":null,\"az_g\":null}}");
-    } else {
-        proto_buf_append(out, cap, &len,
-            ",\"data\":{\"enabled\":true,\"error\":null,"
-            "\"pitch_deg\":%.2f,\"roll_deg\":%.2f,"
-            "\"ax_g\":%.3f,\"ay_g\":%.3f,\"az_g\":%.3f}}",
-            o.pitch_deg, o.roll_deg, o.ax_g, o.ay_g, o.az_g);
+        error = "SENSOR_ABSENT";
+    } else if (!healthy) {
+        error = "SENSOR_FAULT";
     }
+
+    if (error != NULL) {
+        proto_buf_append(out, cap, &len,
+            ",\"data\":{\"enabled\":%s,\"error\":\"%s\","
+            "\"pitch_deg\":null,\"roll_deg\":null,"
+            "\"ax_g\":null,\"ay_g\":null,\"az_g\":null}}",
+            enabled ? "true" : "false", error);
+        return;
+    }
+
+    proto_buf_append(out, cap, &len,
+        ",\"data\":{\"enabled\":true,\"error\":null,"
+        "\"pitch_deg\":%.2f,\"roll_deg\":%.2f,"
+        "\"ax_g\":%.3f,\"ay_g\":%.3f,\"az_g\":%.3f}}",
+        o.pitch_deg, o.roll_deg, o.ax_g, o.ay_g, o.az_g);
 }
 
 /* ── dispatcher ────────────────────────────────────────────── */

@@ -82,7 +82,11 @@ esp_err_t usb_cdc_init(void) {
         return err;
     }
 
-    usb_cdc_rx_task_start();
+    err = usb_cdc_rx_task_start();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "usb_cdc_rx_task_start: %s", esp_err_to_name(err));
+        return err;
+    }
 
     ESP_LOGI(TAG, "CDC-ACM serial device started");
     return ESP_OK;

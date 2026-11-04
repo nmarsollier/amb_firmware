@@ -33,7 +33,6 @@ static const char *TAG = "VIBRATION";
 #define VIB_TASK_PRIORITY       10
 #define VIB_TASK_CORE           1
 #define VIB_FIFO_MAX_SAMPLES    32
-#define VIB_WINDOW_SAMPLES      VIB_SAMPLE_RATE_HZ   /* 1 s fallback reset */
 
 /* Derived DSP constants (compile time). */
 #define PI_F            3.14159265358979f
@@ -53,7 +52,8 @@ static bool s_enabled;
 static bool s_failed;
 static uint32_t s_consec_fail;
 
-/* High-pass (DC-block) + integrator state, per axis. */
+/* High-pass (DC-block) + integrator state, per axis.  These are continuous:
+ * they are never reset on read, only the statistics below are. */
 static float s_hp_in_x, s_hp_out_x, s_vel_x;
 static float s_hp_in_y, s_hp_out_y, s_vel_y;
 static float s_hp_in_z, s_hp_out_z, s_vel_z;
@@ -62,17 +62,22 @@ static float s_hp_in_z, s_hp_out_z, s_vel_z;
 static uint32_t s_count;
 static double s_sum_a2_x, s_sum_a2_y, s_sum_a2_z;
 static double s_sum_v2_x, s_sum_v2_y, s_sum_v2_z;
-static float s_peak_a_x, s_peak_a_y, s_peak_a_z;   /* max |accel|, m/s² */
-static float s_peak_v_x, s_peak_v_y, s_peak_v_z;   /* max |velocity|, m/s */
+static float s_peak_a_x, s_peak_a_y, s_peak_a_z;       /* max |accel|, m/s² */
+static float s_peak_v_x, s_peak_v_y, s_peak_v_z;       /* max |velocity|, m/s */
+static float s_peak_a_total;                            /* max vector norm, m/s² */
+static float s_peak_v_total;                            /* max vector norm, m/s */
 
 /* Gravity (DC) low-pass — for orientation. */
 static float s_grav_x, s_grav_y, s_grav_z;
 
+/* True until the first sample is processed; the filters are seeded with it. */
+static bool s_first_sample;
+
 /* ── DSP (mutex held) ──────────────────────────────────────── */
 
-static void process_axis(float a, float *hp_in, float *hp_out, float *vel,
-                         double *sum_a2, double *sum_v2,
-                         float *peak_a, float *peak_v) {
+static float process_axis(float a, float *hp_in, float *hp_out, float *vel,
+                          double *sum_a2, double *sum_v2,
+                          float *peak_a, float *peak_v) {
     float hp = VIB_HP_ALPHA * (*hp_out + a - *hp_in);
     *hp_in = a;
     *hp_out = hp;
@@ -89,19 +94,48 @@ static void process_axis(float a, float *hp_in, float *hp_out, float *vel,
     if (v_abs > *peak_v) {
         *peak_v = v_abs;
     }
+
+    return hp;
 }
 
 static void process_sample(const AccelSample *s) {
+    if (s_first_sample) {
+        /* Seed the high-pass filter and the gravity low-pass with the first
+         * sample so the initial gravity step does not inject a transient into
+         * the velocity (see #5). */
+        s_hp_in_x = s->x_g * G_TO_MPS2;
+        s_hp_in_y = s->y_g * G_TO_MPS2;
+        s_hp_in_z = s->z_g * G_TO_MPS2;
+        s_hp_out_x = s_hp_out_y = s_hp_out_z = 0.0f;
+        s_vel_x = s_vel_y = s_vel_z = 0.0f;
+        s_grav_x = s->x_g;
+        s_grav_y = s->y_g;
+        s_grav_z = s->z_g;
+        s_first_sample = false;
+        return;
+    }
+
     float ax = s->x_g * G_TO_MPS2;
     float ay = s->y_g * G_TO_MPS2;
     float az = s->z_g * G_TO_MPS2;
 
-    process_axis(ax, &s_hp_in_x, &s_hp_out_x, &s_vel_x,
-                 &s_sum_a2_x, &s_sum_v2_x, &s_peak_a_x, &s_peak_v_x);
-    process_axis(ay, &s_hp_in_y, &s_hp_out_y, &s_vel_y,
-                 &s_sum_a2_y, &s_sum_v2_y, &s_peak_a_y, &s_peak_v_y);
-    process_axis(az, &s_hp_in_z, &s_hp_out_z, &s_vel_z,
-                 &s_sum_a2_z, &s_sum_v2_z, &s_peak_a_z, &s_peak_v_z);
+    float hp_x = process_axis(ax, &s_hp_in_x, &s_hp_out_x, &s_vel_x,
+                              &s_sum_a2_x, &s_sum_v2_x, &s_peak_a_x, &s_peak_v_x);
+    float hp_y = process_axis(ay, &s_hp_in_y, &s_hp_out_y, &s_vel_y,
+                              &s_sum_a2_y, &s_sum_v2_y, &s_peak_a_y, &s_peak_v_y);
+    float hp_z = process_axis(az, &s_hp_in_z, &s_hp_out_z, &s_vel_z,
+                              &s_sum_a2_z, &s_sum_v2_z, &s_peak_a_z, &s_peak_v_z);
+
+    /* Total peak is the maximum per-sample vector norm, not the norm of the
+     * per-axis maxima (which may occur at different instants). */
+    float a_norm = sqrtf(hp_x * hp_x + hp_y * hp_y + hp_z * hp_z);
+    if (a_norm > s_peak_a_total) {
+        s_peak_a_total = a_norm;
+    }
+    float v_norm = sqrtf(s_vel_x * s_vel_x + s_vel_y * s_vel_y + s_vel_z * s_vel_z);
+    if (v_norm > s_peak_v_total) {
+        s_peak_v_total = v_norm;
+    }
 
     /* Gravity low-pass (for orientation) — the raw g, not the high-passed one. */
     s_grav_x += GRAV_ALPHA * (s->x_g - s_grav_x);
@@ -118,14 +152,15 @@ static char classify_iso(float vel_rms_mm_s) {
     return 'D';
 }
 
-/* Reset the accumulators (keeps the high-pass filter state). */
+/* Reset the statistics accumulators (keeps the filter and integrator state). */
 static void reset_accumulators(void) {
     s_count = 0;
     s_sum_a2_x = s_sum_a2_y = s_sum_a2_z = 0.0;
     s_sum_v2_x = s_sum_v2_y = s_sum_v2_z = 0.0;
     s_peak_a_x = s_peak_a_y = s_peak_a_z = 0.0f;
     s_peak_v_x = s_peak_v_y = s_peak_v_z = 0.0f;
-    s_vel_x = s_vel_y = s_vel_z = 0.0f;
+    s_peak_a_total = 0.0f;
+    s_peak_v_total = 0.0f;
 }
 
 /* Compute the figures from the accumulators and reset them (mutex held). */
@@ -146,9 +181,7 @@ static void compute_reading(VibrationReading *out) {
     out->accel_peak_x = s_peak_a_x * MS2_TO_MG;
     out->accel_peak_y = s_peak_a_y * MS2_TO_MG;
     out->accel_peak_z = s_peak_a_z * MS2_TO_MG;
-    out->accel_peak_total = sqrtf(out->accel_peak_x * out->accel_peak_x +
-                                  out->accel_peak_y * out->accel_peak_y +
-                                  out->accel_peak_z * out->accel_peak_z);
+    out->accel_peak_total = s_peak_a_total * MS2_TO_MG;
 
     float vr_x = sqrtf((float)(s_sum_v2_x / n));
     float vr_y = sqrtf((float)(s_sum_v2_y / n));
@@ -163,9 +196,7 @@ static void compute_reading(VibrationReading *out) {
     out->vel_peak_x = s_peak_v_x * M_TO_UM;
     out->vel_peak_y = s_peak_v_y * M_TO_UM;
     out->vel_peak_z = s_peak_v_z * M_TO_UM;
-    out->vel_peak_total = sqrtf(out->vel_peak_x * out->vel_peak_x +
-                                out->vel_peak_y * out->vel_peak_y +
-                                out->vel_peak_z * out->vel_peak_z);
+    out->vel_peak_total = s_peak_v_total * M_TO_UM;
 
     out->valid = true;
 
@@ -182,9 +213,9 @@ static void vibration_task(void *arg) {
     while (true) {
         vTaskDelayUntil(&last_wake, period);
 
+        bool got_sample = false;
         uint8_t entries = 0;
-        bool i2c_ok = (accelerometer_fifo_entries(&entries) == ESP_OK);
-        if (i2c_ok && entries > 0) {
+        if (accelerometer_fifo_entries(&entries) == ESP_OK && entries > 0) {
             if (entries > VIB_FIFO_MAX_SAMPLES) {
                 entries = VIB_FIFO_MAX_SAMPLES;
             }
@@ -194,19 +225,18 @@ static void vibration_task(void *arg) {
                 for (uint8_t i = 0; i < entries; i++) {
                     process_sample(&buf[i]);
                 }
-                if (s_count >= VIB_WINDOW_SAMPLES) {
-                    reset_accumulators();   /* time-based fallback reset */
-                }
                 xSemaphoreGive(s_mutex);
-            } else {
-                i2c_ok = false;
+                got_sample = true;
             }
         }
 
-        if (i2c_ok) {
+        if (got_sample) {
             s_consec_fail = 0;
             s_failed = false;
         } else {
+            /* I2C error, or an empty FIFO (a sensor that has stopped producing
+             * data) — both count as a failure so a dead sensor is never reported
+             * as healthy. */
             s_consec_fail++;
             if (s_consec_fail >= VIB_FAIL_THRESHOLD) {
                 s_failed = true;
@@ -221,6 +251,7 @@ void vibration_init(void) {
     s_enabled = (accelerometer_init() == ESP_OK);
     s_failed = false;
     s_consec_fail = 0;
+    s_first_sample = true;
 
     s_mutex = xSemaphoreCreateMutex();
     if (s_mutex == NULL) {
@@ -233,15 +264,21 @@ void vibration_init(void) {
     s_sum_v2_x = s_sum_v2_y = s_sum_v2_z = 0.0;
     s_peak_a_x = s_peak_a_y = s_peak_a_z = 0.0f;
     s_peak_v_x = s_peak_v_y = s_peak_v_z = 0.0f;
+    s_peak_a_total = 0.0f;
+    s_peak_v_total = 0.0f;
     s_hp_in_x = s_hp_out_x = s_vel_x = 0.0f;
     s_hp_in_y = s_hp_out_y = s_vel_y = 0.0f;
     s_hp_in_z = s_hp_out_z = s_vel_z = 0.0f;
     s_grav_x = s_grav_y = s_grav_z = 0.0f;
 
     if (s_enabled) {
-        xTaskCreatePinnedToCore(vibration_task, "vibration", VIB_TASK_STACK_SIZE,
-                                NULL, VIB_TASK_PRIORITY, NULL, VIB_TASK_CORE);
-        ESP_LOGI(TAG, "accelerometer present, sampling at %d Hz", VIB_SAMPLE_RATE_HZ);
+        if (xTaskCreatePinnedToCore(vibration_task, "vibration", VIB_TASK_STACK_SIZE,
+                                    NULL, VIB_TASK_PRIORITY, NULL, VIB_TASK_CORE) != pdPASS) {
+            ESP_LOGE(TAG, "failed to create vibration task — vibration disabled");
+            s_enabled = false;
+        } else {
+            ESP_LOGI(TAG, "accelerometer present, sampling at %d Hz", VIB_SAMPLE_RATE_HZ);
+        }
     } else {
         ESP_LOGW(TAG, "accelerometer absent — vibration unavailable");
     }

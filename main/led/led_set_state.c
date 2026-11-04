@@ -8,16 +8,32 @@
  */
 #include "led_internal.h"
 
+#include "esp_err.h"
+#include "esp_log.h"
+
 /* ── Shared state ──────────────────────────────────────────── */
 
 LedState led_current_state = LED_STATE_NORMAL;
 
+static const char *TAG = "LED";
+
+/* Persistent transmit buffer: rmt_transmit() may encode the data after the call
+ * returns, so the buffer must outlive led_set_color() — a stack array would be
+ * dead by then. */
+static uint8_t s_rgb[3];
+
 /* ── Internal API ──────────────────────────────────────────── */
 
 void led_set_color(uint8_t r, uint8_t g, uint8_t b) {
-    uint8_t rgb[3] = { r, g, b };   /* LED byte order is RGB (this board's clone) */
+    s_rgb[0] = r;   /* LED byte order is RGB (this board's clone) */
+    s_rgb[1] = g;
+    s_rgb[2] = b;
+
     rmt_transmit_config_t tx_conf = { .loop_count = 0 };
-    rmt_transmit(led_tx_chan, led_encoder, rgb, sizeof(rgb), &tx_conf);
+    esp_err_t err = rmt_transmit(led_tx_chan, led_encoder, s_rgb, sizeof(s_rgb), &tx_conf);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "rmt_transmit failed: %s", esp_err_to_name(err));
+    }
 }
 
 void led_set_state(LedState state) {

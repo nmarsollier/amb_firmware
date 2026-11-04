@@ -102,6 +102,8 @@ reports the subsystem's own condition:
 - `null` — healthy.
 - `"SENSOR_ABSENT"` — the sensor was not detected at boot (e.g. SHT31); the value
   fields are `null`.
+- `"SENSOR_FAULT"` — the sensor was present at boot but its reads are currently
+  failing (or it has stopped producing samples); the value fields are `null`.
 
 A `state` request **always answers**: a sensor fault is returned as an error state,
 never as a hang or a fabricated reading (no 0 °C / 0 m/s² placeholders).

@@ -22,6 +22,11 @@
 /* Enough for every distinct top-level key the protocol uses. */
 #define JSON_MAX_KEYS 32
 
+/* Maximum nesting of objects/arrays before a document is rejected.  Bounds the
+ * parse_value() recursion so a deeply nested body cannot overflow the RX task
+ * stack. */
+#define JSON_MAX_DEPTH 16
+
 typedef enum {
     JSON_STRING = 's',
     JSON_NUMBER = 'n',
@@ -125,8 +130,11 @@ static bool parse_literal(const char **p, const char *lit) {
 
 /* Parse any JSON value starting at *p, validating structure and advancing *p
  * one past it.  Objects and arrays recurse; nested keys are skipped here and
- * never mistaken for top-level members. */
-static bool parse_value(const char **p) {
+ * never mistaken for top-level members.  `depth` bounds the recursion. */
+static bool parse_value(const char **p, int depth) {
+    if (depth > JSON_MAX_DEPTH) {
+        return false;
+    }
     skip_ws(p);
     const char *s = *p;
     switch (*s) {
@@ -142,7 +150,7 @@ static bool parse_value(const char **p) {
             skip_ws(p);
             if (**p != ':') return false;
             (*p)++;
-            if (!parse_value(p)) return false;
+            if (!parse_value(p, depth + 1)) return false;
             skip_ws(p);
             if (**p == ',') { (*p)++; continue; }
             if (**p == '}') { (*p)++; return true; }
@@ -153,7 +161,7 @@ static bool parse_value(const char **p) {
         skip_ws(p);
         if (**p == ']') { (*p)++; return true; }
         for (;;) {
-            if (!parse_value(p)) return false;
+            if (!parse_value(p, depth + 1)) return false;
             skip_ws(p);
             if (**p == ',') { (*p)++; continue; }
             if (**p == ']') { (*p)++; return true; }
@@ -253,7 +261,7 @@ static bool scan_object(const char **p, JsonScan *sc) {
         skip_ws(p);
 
         const char *val = *p;
-        if (!parse_value(p)) return false;
+        if (!parse_value(p, 0)) return false;
         const char *val_end = *p;
 
         if (sc->want != NULL && raw_key_equals(key, sc->want)) {
@@ -330,8 +338,29 @@ static size_t encode_utf8(uint32_t cp, char *out) {
     }
 }
 
+/* Append one byte to `out`, failing if it would not leave room for the NUL. */
+static bool put_char(char *out, size_t cap, size_t *i, char c) {
+    if (*i + 1 >= cap) {
+        return false;
+    }
+    out[(*i)++] = c;
+    return true;
+}
+
+/* Append a literal (small escape sequence), failing on overflow. */
+static bool append_literal(char *out, size_t cap, size_t *i, const char *lit) {
+    for (const char *p = lit; *p != '\0'; p++) {
+        if (!put_char(out, cap, i, *p)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /* Decode a string value's escapes into `out`.  `v` points at the opening '"',
- * `end` one past the closing '"' (both already validated by parse_string). */
+ * `end` one past the closing '"' (both already validated by parse_string).
+ * Returns false if the decoded string does not fit in `cap` (rather than
+ * silently truncating it). */
 static bool decode_string(const char *v, const char *end, char *out, size_t cap) {
     const char *s = v + 1;
     size_t i = 0;
@@ -340,14 +369,14 @@ static bool decode_string(const char *v, const char *end, char *out, size_t cap)
         if (c == '\\') {
             s++;
             switch (*s) {
-            case '"':  if (i < cap - 1) out[i++] = '"';  s++; break;
-            case '\\': if (i < cap - 1) out[i++] = '\\'; s++; break;
-            case '/':  if (i < cap - 1) out[i++] = '/';  s++; break;
-            case 'b':  if (i < cap - 1) out[i++] = '\b'; s++; break;
-            case 'f':  if (i < cap - 1) out[i++] = '\f'; s++; break;
-            case 'n':  if (i < cap - 1) out[i++] = '\n'; s++; break;
-            case 'r':  if (i < cap - 1) out[i++] = '\r'; s++; break;
-            case 't':  if (i < cap - 1) out[i++] = '\t'; s++; break;
+            case '"':  if (!put_char(out, cap, &i, '"'))  return false; s++; break;
+            case '\\': if (!put_char(out, cap, &i, '\\')) return false; s++; break;
+            case '/':  if (!put_char(out, cap, &i, '/'))  return false; s++; break;
+            case 'b':  if (!put_char(out, cap, &i, '\b')) return false; s++; break;
+            case 'f':  if (!put_char(out, cap, &i, '\f')) return false; s++; break;
+            case 'n':  if (!put_char(out, cap, &i, '\n')) return false; s++; break;
+            case 'r':  if (!put_char(out, cap, &i, '\r')) return false; s++; break;
+            case 't':  if (!put_char(out, cap, &i, '\t')) return false; s++; break;
             case 'u': {
                 uint32_t cp = 0;
                 for (int k = 1; k <= 4; k++) {
@@ -357,7 +386,7 @@ static bool decode_string(const char *v, const char *end, char *out, size_t cap)
                 char enc[3];
                 size_t n = encode_utf8(cp, enc);
                 for (size_t k = 0; k < n; k++) {
-                    if (i < cap - 1) out[i++] = enc[k];
+                    if (!put_char(out, cap, &i, enc[k])) return false;
                 }
                 break;
             }
@@ -365,7 +394,7 @@ static bool decode_string(const char *v, const char *end, char *out, size_t cap)
                 return false;   /* unreachable: parse_string validated the escape */
             }
         } else {
-            if (i < cap - 1) out[i++] = (char) c;
+            if (!put_char(out, cap, &i, (char) c)) return false;
             s++;
         }
     }
@@ -493,6 +522,39 @@ bool proto_json_get_object(const char *json, const char *key, char *out, size_t 
     if (n >= cap) return false;
     memcpy(out, f.value, n);
     out[n] = '\0';
+    return true;
+}
+
+/* Escape a string for embedding in JSON output (quotes, backslash and control
+ * characters).  Writes a NUL-terminated string; returns false if truncated. */
+bool proto_json_escape(const char *src, char *out, size_t cap) {
+    if (out == NULL || cap == 0) {
+        return false;
+    }
+
+    size_t i = 0;
+    for (const char *p = src; *p != '\0'; p++) {
+        unsigned char c = (unsigned char) *p;
+        switch (c) {
+        case '"':  if (!append_literal(out, cap, &i, "\\\"")) return false; break;
+        case '\\': if (!append_literal(out, cap, &i, "\\\\")) return false; break;
+        case '\b': if (!append_literal(out, cap, &i, "\\b")) return false; break;
+        case '\f': if (!append_literal(out, cap, &i, "\\f")) return false; break;
+        case '\n': if (!append_literal(out, cap, &i, "\\n")) return false; break;
+        case '\r': if (!append_literal(out, cap, &i, "\\r")) return false; break;
+        case '\t': if (!append_literal(out, cap, &i, "\\t")) return false; break;
+        default:
+            if (c < 0x20) {
+                char esc[7];
+                snprintf(esc, sizeof(esc), "\\u%04x", c);
+                if (!append_literal(out, cap, &i, esc)) return false;
+            } else {
+                if (!put_char(out, cap, &i, (char) c)) return false;
+            }
+            break;
+        }
+    }
+    out[i] = '\0';
     return true;
 }
 

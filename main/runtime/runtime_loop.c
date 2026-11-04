@@ -4,6 +4,7 @@
  */
 #include "runtime.h"
 
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -13,6 +14,8 @@
 #define MAIN_LOOP_PERIOD_MS     200
 #define MAIN_TASK_STACK_SIZE    4096
 #define MAIN_TASK_PRIORITY      5
+
+static const char *TAG = "MAIN_LOOP";
 
 /*
  * Business use case: orchestrate the board's periodic operational cycle.
@@ -37,7 +40,7 @@ static void main_loop_task(void *arg) {
  * Objective: delegate continuous operation to a dedicated FreeRTOS task.
  */
 void setup_runtime_start(void) {
-    xTaskCreatePinnedToCore(
+    BaseType_t res = xTaskCreatePinnedToCore(
         main_loop_task,
         "main_loop",
         MAIN_TASK_STACK_SIZE,
@@ -46,4 +49,7 @@ void setup_runtime_start(void) {
         NULL,
         1);  /* CPU 1 — keep sensor I/O (ADC/I2C) off CPU 0 so a stuck read
               * never blocks the RX task (CPU 0, prio 19). */
+    if (res != pdPASS) {
+        ESP_LOGE(TAG, "failed to create main_loop task");
+    }
 }

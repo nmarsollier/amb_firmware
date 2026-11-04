@@ -44,6 +44,8 @@ bool proto_json_get_u32(const char *json, const char *key, uint32_t *out);
 bool proto_json_get_int64(const char *json, const char *key, int64_t *out);
 bool proto_json_get_bool(const char *json, const char *key, bool *out);
 bool proto_json_get_object(const char *json, const char *key, char *out, size_t cap);
+/* Escape a string for embedding in JSON output; returns false if truncated. */
+bool proto_json_escape(const char *src, char *out, size_t cap);
 bool proto_buf_append(char *buf, size_t cap, size_t *len, const char *fmt, ...)
     __attribute__((format(printf, 4, 5)));
 
@@ -65,11 +67,15 @@ static inline void proto_env_begin(char *out, size_t cap, size_t *len,
                                    const char *type, uint32_t id,
                                    const char *session, bool ok) {
     char boot[9];
+    char type_esc[PROTO_MAX_TYPE_LEN * 6 + 1];
+    char session_esc[PROTO_MAX_SESSION_LEN * 6 + 1];
     proto_boot_id_str(boot, sizeof(boot));
+    proto_json_escape(type, type_esc, sizeof(type_esc));
+    proto_json_escape(session, session_esc, sizeof(session_esc));
     proto_buf_append(out, cap, len,
         "{\"proto\":%d,\"type\":\"%s\",\"id\":%lu,\"session\":\"%s\","
         "\"boot_id\":\"%s\",\"ok\":%s",
-        PROTO_VERSION, type, (unsigned long) id, session, boot,
+        PROTO_VERSION, type_esc, (unsigned long) id, session_esc, boot,
         ok ? "true" : "false");
 }
 

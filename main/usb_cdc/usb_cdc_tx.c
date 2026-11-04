@@ -2,11 +2,14 @@
 #include "usb_cdc.h"
 #include "usb_cdc_internal.h"
 
+#include "esp_log.h"
 #include "tinyusb_cdc_acm.h"
 #include "class/cdc/cdc_device.h"   /* tud_cdc_n_write_clear */
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+static const char *TAG = "USB_CDC_TX";
 
 /* Give up queueing a frame if the host stops draining the CDC ring for this
  * long.  A command response is small and sent rarely, so this only trips when
@@ -27,12 +30,15 @@ void usb_cdc_tx_reset(void) {
 
     /* Serialise with usb_cdc_send(): clearing the FIFO mid-send would drop the
      * front of a frame and leave its tail queued, reproducing the same
-     * half-frame corruption this reset is meant to prevent. Bound the wait so
-     * a stuck sender cannot hang the TinyUSB task indefinitely. */
-    if (xSemaphoreTake(usb_cdc_tx_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+     * half-frame corruption this reset is meant to prevent.  A sender holds the
+     * mutex for at most USB_CDC_TX_TIMEOUT_MS, so wait a little longer than that
+     * — a single reconnect must be enough to re-arm the transport. */
+    if (xSemaphoreTake(usb_cdc_tx_mutex, pdMS_TO_TICKS(USB_CDC_TX_TIMEOUT_MS + 200)) == pdTRUE) {
         tud_cdc_n_write_clear(TINYUSB_CDC_ACM_0);
         s_tx_failed = false;
         xSemaphoreGive(usb_cdc_tx_mutex);
+    } else {
+        ESP_LOGW(TAG, "tx reset could not acquire the mutex");
     }
 }
 

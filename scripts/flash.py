@@ -47,15 +47,19 @@ def send_bootloader(port):
         f.write(frame)
 
 
-def wait_for_port(exclude, timeout=12.0):
+def list_ports():
+    return set(glob.glob("/dev/cu.usbmodem*"))
+
+
+def wait_for_new_port(before, timeout=12.0):
+    """Return the set of ports that appeared after `before`; empty on timeout."""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        ports = sorted(glob.glob("/dev/cu.usbmodem*"))
-        for p in ports:
-            if p != exclude:
-                return p
+        new = list_ports() - before
+        if new:
+            return new
         time.sleep(0.25)
-    return None
+    return set()
 
 
 def main(argv):
@@ -64,17 +68,29 @@ def main(argv):
         sys.stderr.write("no /dev/cu.usbmodem* port found\n")
         return 1
 
+    # Snapshot the ports present BEFORE the reboot so the download port can be
+    # told apart from any other device that was already connected.
+    before = list_ports()
+
     try:
         send_bootloader(cdc)
         print("bootloader command sent on %s" % cdc)
     except OSError:
         print("no app listening on %s (already in download mode?)" % cdc)
 
-    port = wait_for_port(exclude=cdc)
-    if port is None:
+    new_ports = sorted(wait_for_new_port(before))
+    if len(new_ports) == 1:
+        port = new_ports[0]
+    elif len(new_ports) == 0:
         # No new port appeared — the chip may already be in download mode on
         # the same node. Fall back to it.
         port = cdc
+    else:
+        # More than one new port: don't guess — flashing the wrong board could
+        # overwrite its firmware.
+        sys.stderr.write("ambiguous: multiple new ports appeared (%s); aborting\n"
+                         % ", ".join(new_ports))
+        return 1
 
     print("flashing on %s" % port)
     return subprocess.call(["idf.py", "-p", port, "flash"])

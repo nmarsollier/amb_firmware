@@ -1,5 +1,6 @@
 #pragma once
 
+#include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -12,7 +13,7 @@ extern SemaphoreHandle_t usb_cdc_rx_sem;
 extern SemaphoreHandle_t usb_cdc_tx_mutex;
 
 /* Start the dedicated RX task (called once by usb_cdc_init). */
-void usb_cdc_rx_task_start(void);
+esp_err_t usb_cdc_rx_task_start(void);
 
 /* Clear any partially-queued TX frame and re-arm sending.  Called on host
  * reconnect (DTR assert) so a frame abandoned mid-send never leaks its tail

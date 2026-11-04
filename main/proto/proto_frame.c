@@ -29,6 +29,11 @@ static uint8_t s_rx[PROTO_MAX_FRAME + 4];
 static size_t s_rx_len;
 static int64_t s_rx_progress_us;   /* last time the buffer made progress */
 
+/* Reset requested by the TinyUSB task (host reconnect). The RX task is the sole
+ * owner of s_rx_len; the reset is posted as a flag and applied at the top of
+ * proto_feed(), never concurrently with proto_drain(). */
+static volatile bool s_rx_reset_pending;
+
 static uint32_t read_le32(const uint8_t *p) {
     return (uint32_t) p[0] |
            ((uint32_t) p[1] << 8) |
@@ -72,6 +77,14 @@ static void proto_drain(void) {
 }
 
 void proto_feed(const uint8_t *data, size_t len) {
+    /* Apply a reset requested from the TinyUSB task (host reconnect). Only the
+     * RX task mutates s_rx_len, so the reset is posted as a flag and applied
+     * here — never concurrently with proto_drain(). */
+    if (s_rx_reset_pending) {
+        s_rx_reset_pending = false;
+        s_rx_len = 0;
+    }
+
     /* A partial frame that has been idle past the timeout is stuck (a bogus
      * length) — drop it so the next bytes can resynchronise. */
     if (s_rx_len > 0 && (esp_timer_get_time() - s_rx_progress_us) > PROTO_RX_STUCK_US) {
@@ -90,10 +103,11 @@ void proto_feed(const uint8_t *data, size_t len) {
     }
 }
 
-/* Drop any half-received frame.  Called on host reconnect so a frame split
- * across the old and new sessions cannot be completed by the new bytes. */
+/* Drop any half-received frame.  Called from the TinyUSB task on host reconnect
+ * so a frame split across the old and new sessions cannot be completed by the
+ * new bytes.  It only posts the request; the RX task applies it. */
 void proto_frame_reset(void) {
-    s_rx_len = 0;
+    s_rx_reset_pending = true;
 }
 
 void proto_send_body(const char *body) {

@@ -33,6 +33,14 @@ void proto_dispatch(const char *body) {
         return;
     }
 
+    /* Enforce the contract: `proto` must be 2. */
+    uint32_t proto_ver = 0;
+    if (!proto_json_get_u32(body, "proto", &proto_ver) || proto_ver != PROTO_VERSION) {
+        ESP_LOGW(TAG, "rejecting unsupported proto");
+        send_error("error", 0, "", "INVALID_ARGUMENT", "unsupported proto");
+        return;
+    }
+
     proto_json_get_string(body, "type", type, sizeof(type));
     proto_json_get_string(body, "session", session, sizeof(session));
 
@@ -46,6 +54,13 @@ void proto_dispatch(const char *body) {
     if (proto_json_has_key(body, "id") && !proto_json_get_u32(body, "id", &id)) {
         ESP_LOGW(TAG, "rejecting invalid id");
         send_error("error", 0, session, "INVALID_ARGUMENT", "invalid id");
+        return;
+    }
+
+    /* `id` is a non-zero uint32 — 0 is reserved for events. */
+    if (id == 0) {
+        ESP_LOGW(TAG, "rejecting missing/zero id");
+        send_error("error", 0, session, "INVALID_ARGUMENT", "id must be non-zero");
         return;
     }
 

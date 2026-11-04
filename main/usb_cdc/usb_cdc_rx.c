@@ -60,11 +60,13 @@ static void usb_cdc_rx_task(void *arg) {
     }
 }
 
-void usb_cdc_rx_task_start(void) {
+esp_err_t usb_cdc_rx_task_start(void) {
     if (xTaskCreatePinnedToCore(usb_cdc_rx_task, "usb_cdc_rx",
                                 USB_CDC_RX_TASK_STACK_BYTES, NULL,
                                 USB_CDC_RX_TASK_PRIORITY, NULL,
                                 USB_CDC_RX_TASK_CORE) != pdPASS) {
         ESP_LOGE(TAG, "failed to create RX task");
+        return ESP_ERR_NO_MEM;
     }
+    return ESP_OK;
 }

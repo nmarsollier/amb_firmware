@@ -62,8 +62,9 @@ static void emit_err(char *out, size_t cap, const char *type, uint32_t id,
 
 /* ── device restart / bootloader ───────────────────────────── */
 
-/* Schedule `cb` 200 ms out so the "accepted" response flushes before it runs. */
-static void schedule_reboot(esp_timer_cb_t cb, const char *name,
+/* Schedule `cb` 200 ms out so the "accepted" response flushes before it runs.
+ * Returns true when the reboot was scheduled (accepted), false on failure. */
+static bool schedule_reboot(esp_timer_cb_t cb, const char *name,
                             uint32_t id, const char *session, char *out, size_t cap) {
     esp_timer_handle_t timer = NULL;
     esp_timer_create_args_t args = {
@@ -74,18 +75,20 @@ static void schedule_reboot(esp_timer_cb_t cb, const char *name,
         esp_timer_start_once(timer, 200 * 1000);
         emit_ok(out, cap, "action", id, session,
                 "\"op_id\":\"\",\"status\":\"accepted\"");
+        return true;
     } else {
         emit_err(out, cap, "action", id, session, "INTERNAL",
                  "reboot unavailable");
+        return false;
     }
 }
 
-static void handle_restart(uint32_t id, const char *session, char *out, size_t cap) {
-    schedule_reboot(restart_timer_cb, "proto_restart", id, session, out, cap);
+static bool handle_restart(uint32_t id, const char *session, char *out, size_t cap) {
+    return schedule_reboot(restart_timer_cb, "proto_restart", id, session, out, cap);
 }
 
-static void handle_bootloader(uint32_t id, const char *session, char *out, size_t cap) {
-    schedule_reboot(bootloader_timer_cb, "proto_bootloader", id, session, out, cap);
+static bool handle_bootloader(uint32_t id, const char *session, char *out, size_t cap) {
+    return schedule_reboot(bootloader_timer_cb, "proto_bootloader", id, session, out, cap);
 }
 
 /* ── dispatcher ────────────────────────────────────────────── */
@@ -99,12 +102,30 @@ void proto_handle_action(const char *req, uint32_t id, char *out, size_t cap) {
     proto_json_get_string(req, "action", action, sizeof(action));
     get_session(req, session, sizeof(session));
 
+    /* Idempotency: a retried action id replays the original result instead of
+     * re-executing (which would schedule a second reboot timer). */
+    proto_seen_entry_t seen;
+    if (proto_action_lookup(id, &seen)) {
+        if (seen.ok) {
+            emit_ok(out, cap, "action", id, session,
+                    "\"op_id\":\"\",\"status\":\"accepted\"");
+        } else {
+            emit_err(out, cap, "action", id, session,
+                     seen.error != NULL ? seen.error : "INTERNAL",
+                     "action previously failed");
+        }
+        return;
+    }
+
     if (strcmp(target, "device") == 0 && strcmp(action, "restart") == 0) {
-        handle_restart(id, session, out, cap);
+        bool ok = handle_restart(id, session, out, cap);
+        proto_action_record(id, ok, ok ? NULL : "INTERNAL");
     } else if (strcmp(target, "device") == 0 && strcmp(action, "bootloader") == 0) {
-        handle_bootloader(id, session, out, cap);
+        bool ok = handle_bootloader(id, session, out, cap);
+        proto_action_record(id, ok, ok ? NULL : "INTERNAL");
     } else {
         emit_err(out, cap, "action", id, session, "NOT_SUPPORTED",
                  "unknown action");
+        proto_action_record(id, false, "NOT_SUPPORTED");
     }
 }
