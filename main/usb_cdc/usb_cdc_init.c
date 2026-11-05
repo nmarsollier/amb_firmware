@@ -3,6 +3,8 @@
 #include "usb_cdc_internal.h"
 
 #include "esp_log.h"
+#include "esp_private/usb_phy.h"
+#include "freertos/task.h"
 
 #include "tinyusb.h"
 #include "tinyusb_cdc_acm.h"
@@ -90,4 +92,25 @@ esp_err_t usb_cdc_init(void) {
 
     ESP_LOGI(TAG, "CDC-ACM serial device started");
     return ESP_OK;
+}
+
+esp_err_t usb_cdc_prepare_download(void) {
+    esp_err_t err = tinyusb_driver_uninstall();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Unable to stop TinyUSB: %s", esp_err_to_name(err));
+        return err;
+    }
+    // Let the host observe a disconnect before assigning the shared PHY to ROM USB.
+    vTaskDelay(pdMS_TO_TICKS(100));
+    usb_phy_config_t config = {
+        .controller = USB_PHY_CTRL_SERIAL_JTAG,
+        .target = USB_PHY_TARGET_INT,
+    };
+    usb_phy_handle_t phy = NULL;
+    err = usb_new_phy(&config, &phy);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Unable to prepare download USB: %s", esp_err_to_name(err));
+    }
+    // Keep the PHY active across the CPU reset; ROM will take ownership.
+    return err;
 }

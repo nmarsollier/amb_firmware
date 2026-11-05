@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "usb_cdc.h"
+
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "soc/rtc_cntl_reg.h"
@@ -29,7 +31,10 @@ static void restart_timer_cb(void *arg) {
 /* Delayed reboot into ROM download mode (button-less flashing). */
 static void bootloader_timer_cb(void *arg) {
     (void) arg;
-    REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
+    if (usb_cdc_prepare_download() != ESP_OK) {
+        return;
+    }
+    REG_SET_BIT(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
     esp_restart();
 }
 
@@ -71,8 +76,14 @@ static bool schedule_reboot(esp_timer_cb_t cb, const char *name,
         .callback = cb,
         .name = name,
     };
-    if (esp_timer_create(&args, &timer) == ESP_OK) {
-        esp_timer_start_once(timer, 200 * 1000);
+    esp_err_t err = esp_timer_create(&args, &timer);
+    if (err == ESP_OK) {
+        err = esp_timer_start_once(timer, 200 * 1000);
+        if (err != ESP_OK) {
+            esp_timer_delete(timer);
+        }
+    }
+    if (err == ESP_OK) {
         emit_ok(out, cap, "action", id, session,
                 "\"op_id\":\"\",\"status\":\"accepted\"");
         return true;

@@ -25,6 +25,9 @@ typedef void (*usb_cdc_rx_fn)(const uint8_t *data, size_t len, void *arg);
  */
 esp_err_t usb_cdc_init(void);
 
+/* Release application USB and prepare the ROM download connection before reboot. */
+esp_err_t usb_cdc_prepare_download(void);
+
 /* Register the receive callback invoked by the RX task. */
 void usb_cdc_set_rx_callback(usb_cdc_rx_fn cb, void *arg);
 

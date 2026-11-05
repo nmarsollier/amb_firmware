@@ -1,23 +1,18 @@
-# amb_firmware — top-level convenience Makefile.
-#
-#   make flash         flash the firmware (button-less: enters download mode first)
-#   make enter-flash   only put the module into ROM download mode
-#
-# `flash` sends the protocol's `action/device/bootloader` command over the USB
-# CDC port, waits for the USB-Serial-JTAG (download) port to enumerate, then
-# runs idf.py against it — no BOOT button needed. `enter-flash` only performs
-# the first step. The firmware itself is built with idf.py (CMake), not make.
+# amb_firmware — build and flash one connected ESP32-S3.
+# flash: build, request bootloader, verify ROM, then flash.
+# flash-download: build and flash a board already in ROM download mode.
+# enter-flash: enter and verify download mode without building or flashing.
+# PORT is optional when exactly one /dev/cu.usbmodem* exists.
 
 MAKEFLAGS += --no-print-directory
 
-.PHONY: flash enter-flash
+.PHONY: flash flash-download enter-flash
 
-# Button-less flash: enter download mode, then flash the re-enumerated port.
-# The ESP-IDF environment is sourced so idf.py resolves inside scripts/flash.py.
 flash:
-	@bash -c 'source "$$HOME/.espressif/v6.0.1/esp-idf/export.sh" && python3 scripts/flash.py'
+	@bash -c 'source "$$HOME/.espressif/v6.0.1/esp-idf/export.sh" && python3 scripts/flash.py $(PORT)'
 
-# PORT is optional: pass it (PORT=/dev/cu.usbmodem...), or the script
-# auto-detects the first /dev/cu.usbmodem* device.
+flash-download:
+	@bash -c 'source "$$HOME/.espressif/v6.0.1/esp-idf/export.sh" && python3 scripts/flash.py --download $(PORT)'
+
 enter-flash:
-	@python3 scripts/enter_download.py $(PORT)
+	@bash -c 'source "$$HOME/.espressif/v6.0.1/esp-idf/export.sh" && python3 scripts/enter_download.py $(PORT)'

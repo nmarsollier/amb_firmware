@@ -67,10 +67,30 @@ of this link.
 
 ### Button-less flashing
 
-`make flash` sends the `action/device/bootloader` command over the USB CDC port,
-waits for the module to re-enumerate as USB-Serial-JTAG, and reflashes it — no
-BOOT button needed. `make enter-flash` does only the first step. The wire format
-is documented in [`main/proto/README.md`](main/proto/README.md).
+`make flash` builds first, sends `action/device/bootloader` over one open USB
+CDC connection, and waits for an ESP32-S3 ROM handshake before flashing. The
+port may change names or keep the same name. A missing command response is only
+accepted if the ROM subsequently responds (including a board already in download
+mode). An explicit protocol rejection aborts the operation.
+
+Connect one ESP board and close serial monitors/gateways before flashing. Port
+selection requires a single `/dev/cu.usbmodem*`, or an explicit
+`make flash PORT=/dev/cu.usbmodem...`. USB location/serial-string matching is not
+required. The workflow uses the pyserial and esptool installed with ESP-IDF.
+
+`make enter-flash` requests and verifies download mode without building or writing
+flash. `make flash-download` builds and flashes a board already in download mode,
+without sending an application command. Both support `PORT=...` and use the same
+ROM verification. If software entry fails, use BOOT/RESET to enter download mode
+and run `make flash-download`. The wire format is documented in
+[`main/proto/README.md`](main/proto/README.md).
+
+The firmware releases TinyUSB and assigns the internal USB PHY to Serial/JTAG
+before rebooting into ROM. The first update from older firmware may require
+BOOT/RESET followed by `make flash-download` to install this transition.
+
+Run script regression tests in the ESP-IDF environment with
+`python3 -B scripts/test_flash.py`.
 
 ## Alpaca
 
