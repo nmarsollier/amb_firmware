@@ -12,6 +12,10 @@ esp_err_t accelerometer_read_sample(AccelSample *out) {
         return ESP_ERR_INVALID_ARG;
     }
 
+    if (!accel_sensor.present || accel_sensor.dev_handle == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     uint8_t reg = ADXL345_REG_DATAX0;
     uint8_t data[6] = { 0 };
 

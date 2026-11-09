@@ -31,8 +31,8 @@ static void usb_cdc_line_state(int itf, cdcacm_event_t *event) {
     (void) itf;
     bool dtr = event->line_state_changed_data.dtr;
     if (dtr) {
-        /* Host opened the port — drop any half-sent frame left from a previous
-         * failed session before the new session's first byte goes out. */
+        /* Ask the RX worker to clear the previous session's queued bytes.
+         * Never wait for its TX mutex from the TinyUSB task. */
         usb_cdc_tx_reset();
     }
     if (s_conn_fn != NULL) {
@@ -50,9 +50,7 @@ esp_err_t usb_cdc_init(void) {
      * CDC device/configuration/string descriptors (CDC class + custom
      * VID/PID/strings from sdkconfig.defaults). */
     tinyusb_config_t cfg = TINYUSB_DEFAULT_CONFIG();
-    /* Keep the TinyUSB task on core 0: the motion task owns core 1 at priority
-     * 23 and would starve it.  Priority 20 sits below the motion task (so
-     * STOP's RMT teardown never races USB) and above the RX task (19). */
+    /* Keep USB on core 0, above the RX worker (19). Sensor I/O runs on core 1. */
     cfg.task.xCoreID = 0;
     cfg.task.priority = 20;
 

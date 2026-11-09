@@ -15,7 +15,7 @@ extern SemaphoreHandle_t usb_cdc_tx_mutex;
 /* Start the dedicated RX task (called once by usb_cdc_init). */
 esp_err_t usb_cdc_rx_task_start(void);
 
-/* Clear any partially-queued TX frame and re-arm sending.  Called on host
- * reconnect (DTR assert) so a frame abandoned mid-send never leaks its tail
- * into the new session's byte stream. */
+/* Post a reconnect reset without blocking the TinyUSB callback. */
 void usb_cdc_tx_reset(void);
+/* Apply a pending reset from the RX task before dispatching new requests. */
+void usb_cdc_tx_service(void);

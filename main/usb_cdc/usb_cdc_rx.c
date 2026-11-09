@@ -44,6 +44,7 @@ static void usb_cdc_drain(void) {
 
     while (tinyusb_cdcacm_read(TINYUSB_CDC_ACM_0, s_rx_buf, sizeof(s_rx_buf), &received) == ESP_OK
            && received > 0) {
+        usb_cdc_tx_service();
         if (s_rx_fn != NULL) {
             s_rx_fn(s_rx_buf, received, s_rx_arg);
         }
@@ -55,6 +56,7 @@ static void usb_cdc_rx_task(void *arg) {
 
     while (true) {
         if (xSemaphoreTake(usb_cdc_rx_sem, portMAX_DELAY) == pdTRUE) {
+            usb_cdc_tx_service();
             usb_cdc_drain();
         }
     }

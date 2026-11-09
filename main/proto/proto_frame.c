@@ -12,6 +12,11 @@
 #include "proto_internal.h"
 
 #include <string.h>
+#include <stdatomic.h>
+#include "sdkconfig.h"
+
+_Static_assert(CONFIG_TINYUSB_CDC_TX_BUFSIZE >= PROTO_MAX_FRAME + 4,
+               "CDC TX FIFO must hold a complete protocol frame");
 
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -32,7 +37,7 @@ static int64_t s_rx_progress_us;   /* last time the buffer made progress */
 /* Reset requested by the TinyUSB task (host reconnect). The RX task is the sole
  * owner of s_rx_len; the reset is posted as a flag and applied at the top of
  * proto_feed(), never concurrently with proto_drain(). */
-static volatile bool s_rx_reset_pending;
+static atomic_bool s_rx_reset_pending;
 
 static uint32_t read_le32(const uint8_t *p) {
     return (uint32_t) p[0] |
@@ -80,8 +85,7 @@ void proto_feed(const uint8_t *data, size_t len) {
     /* Apply a reset requested from the TinyUSB task (host reconnect). Only the
      * RX task mutates s_rx_len, so the reset is posted as a flag and applied
      * here — never concurrently with proto_drain(). */
-    if (s_rx_reset_pending) {
-        s_rx_reset_pending = false;
+    if (atomic_exchange(&s_rx_reset_pending, false)) {
         s_rx_len = 0;
     }
 
@@ -107,7 +111,7 @@ void proto_feed(const uint8_t *data, size_t len) {
  * so a frame split across the old and new sessions cannot be completed by the
  * new bytes.  It only posts the request; the RX task applies it. */
 void proto_frame_reset(void) {
-    s_rx_reset_pending = true;
+    atomic_store(&s_rx_reset_pending, true);
 }
 
 void proto_send_body(const char *body) {

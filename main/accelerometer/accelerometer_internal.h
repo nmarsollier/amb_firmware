@@ -36,6 +36,7 @@
 /* ── Sensor state ─────────────────────────────────────────── */
 
 typedef struct {
+    i2c_master_bus_handle_t bus_handle;
     uint8_t address;
     i2c_master_dev_handle_t dev_handle;
     bool present;

@@ -89,8 +89,16 @@ The firmware releases TinyUSB and assigns the internal USB PHY to Serial/JTAG
 before rebooting into ROM. The first update from older firmware may require
 BOOT/RESET followed by `make flash-download` to install this transition.
 
-Run script regression tests in the ESP-IDF environment with
-`python3 -B scripts/test_flash.py`.
+Run flash-script regression tests in the ESP-IDF environment with
+`python3 -B scripts/test_flash.py`. Run sensor/USB runtime regression tests on the
+host with `python3 scripts/test_runtime.py` (requires a C11 compiler with
+UndefinedBehaviorSanitizer; optionally set `SANITIZERS=address,undefined`).
+
+The vibration task distinguishes I2C errors from a temporarily empty FIFO. It
+marks data stale after 250 ms without samples and retries sensor/bus setup at
+most once per second, including after a failed boot probe. Filters and interval
+statistics restart after sample loss. USB responses are queued whole; host
+backpressure has a bounded timeout and does not disable subsequent responses.
 
 ## Alpaca
 

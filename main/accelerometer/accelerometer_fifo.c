@@ -13,6 +13,10 @@ esp_err_t accelerometer_read_fifo(AccelSample *samples, size_t n_samples) {
         return ESP_ERR_INVALID_ARG;
     }
 
+    if (!accel_sensor.present || accel_sensor.dev_handle == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     for (size_t i = 0; i < n_samples; i++) {
         uint8_t reg = ADXL345_REG_DATAX0;
         uint8_t data[6] = { 0 };
@@ -31,6 +35,10 @@ esp_err_t accelerometer_read_fifo(AccelSample *samples, size_t n_samples) {
 esp_err_t accelerometer_fifo_entries(uint8_t *out) {
     if (out == NULL) {
         return ESP_ERR_INVALID_ARG;
+    }
+
+    if (!accel_sensor.present || accel_sensor.dev_handle == NULL) {
+        return ESP_ERR_INVALID_STATE;
     }
 
     uint8_t reg = ADXL345_REG_FIFO_STATUS;

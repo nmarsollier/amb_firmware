@@ -39,8 +39,8 @@ typedef void (*usb_cdc_conn_fn)(bool connected, void *arg);
 void usb_cdc_set_conn_callback(usb_cdc_conn_fn cb, void *arg);
 
 /*
- * Queue `data` for transmission and flush to the host.  Non-blocking: returns
- * false when the TX FIFO cannot accept the whole buffer (the caller may drop
- * the frame — telemetry is replaceable, command responses are not retried).
+ * Wait up to one second for space, then queue the complete frame and flush.
+ * Returns false on disconnect or timeout without queueing a partial frame.
+ * The caller may retry; ordinary backpressure does not disable future sends.
  */
 bool usb_cdc_send(const uint8_t *data, size_t len);

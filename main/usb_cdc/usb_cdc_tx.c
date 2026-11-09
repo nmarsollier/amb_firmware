@@ -1,85 +1,68 @@
-/* USB CDC — usb_cdc_tx.c — frame transmission to the host. */
+/* USB CDC — bounded, whole-frame transmission to the host. */
 #include "usb_cdc.h"
 #include "usb_cdc_internal.h"
 
-#include "esp_log.h"
+#include <stdatomic.h>
+#include "sdkconfig.h"
 #include "tinyusb_cdc_acm.h"
-#include "class/cdc/cdc_device.h"   /* tud_cdc_n_write_clear */
-
-#include "freertos/FreeRTOS.h"
+#include "class/cdc/cdc_device.h"
 #include "freertos/task.h"
 
-static const char *TAG = "USB_CDC_TX";
-
-/* Give up queueing a frame if the host stops draining the CDC ring for this
- * long.  A command response is small and sent rarely, so this only trips when
- * the host has gone away. */
 #define USB_CDC_TX_TIMEOUT_MS 1000
 
-/* Set when a frame was only partially queued (the host stopped draining before
- * the whole frame got into the CDC ring).  The stream is then desynchronised:
- * the next frame would be read as the tail of the incomplete one, so further
- * sends are refused until the host reconnects and usb_cdc_tx_reset() clears
- * both the flag and the residual bytes in the FIFO. */
-static bool s_tx_failed = false;
+/* Only the RX worker clears the FIFO, never the TinyUSB callback. */
+static atomic_bool s_reset_pending;
+/* Defensive latch for an unexpected short write, guarded by the TX mutex. */
+static bool s_tx_failed;
 
 void usb_cdc_tx_reset(void) {
-    if (usb_cdc_tx_mutex == NULL) {
-        return;
-    }
-
-    /* Serialise with usb_cdc_send(): clearing the FIFO mid-send would drop the
-     * front of a frame and leave its tail queued, reproducing the same
-     * half-frame corruption this reset is meant to prevent.  A sender holds the
-     * mutex for at most USB_CDC_TX_TIMEOUT_MS, so wait a little longer than that
-     * — a single reconnect must be enough to re-arm the transport. */
-    if (xSemaphoreTake(usb_cdc_tx_mutex, pdMS_TO_TICKS(USB_CDC_TX_TIMEOUT_MS + 200)) == pdTRUE) {
-        tud_cdc_n_write_clear(TINYUSB_CDC_ACM_0);
-        s_tx_failed = false;
-        xSemaphoreGive(usb_cdc_tx_mutex);
-    } else {
-        ESP_LOGW(TAG, "tx reset could not acquire the mutex");
+    atomic_store(&s_reset_pending, true);
+    if (usb_cdc_rx_sem != NULL) {
+        xSemaphoreGive(usb_cdc_rx_sem);
     }
 }
 
+void usb_cdc_tx_service(void) {
+    if (usb_cdc_tx_mutex == NULL || !atomic_load(&s_reset_pending)) {
+        return;
+    }
+    xSemaphoreTake(usb_cdc_tx_mutex, portMAX_DELAY);
+    if (atomic_exchange(&s_reset_pending, false)) {
+        tud_cdc_n_write_clear(TINYUSB_CDC_ACM_0);
+        s_tx_failed = false;
+    }
+    xSemaphoreGive(usb_cdc_tx_mutex);
+}
+
 bool usb_cdc_send(const uint8_t *data, size_t len) {
-    if (data == NULL || len == 0) {
+    if (data == NULL || len == 0 || len > CONFIG_TINYUSB_CDC_TX_BUFSIZE ||
+        usb_cdc_tx_mutex == NULL) {
         return false;
     }
-
-    if (usb_cdc_tx_mutex == NULL || s_tx_failed) {
-        return false;
-    }
-
     if (xSemaphoreTake(usb_cdc_tx_mutex, pdMS_TO_TICKS(10)) != pdTRUE) {
         return false;
     }
 
-    /* Queue the whole frame, advancing past whatever the CDC TX ring accepts.
-     * When the ring is full, yield so the TinyUSB task drains it to the host.
-     * A partially-queued frame must never be left behind: the next frame would
-     * be read as the tail of this one and desynchronise the length framing. */
+    bool sent = false;
     const TickType_t start = xTaskGetTickCount();
-    const TickType_t timeout_ticks = pdMS_TO_TICKS(USB_CDC_TX_TIMEOUT_MS);
-    size_t off = 0;
-    while (off < len) {
-        size_t queued = tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, data + off, len - off);
-        off += queued;
-        if (off == len) {
+    const TickType_t timeout = pdMS_TO_TICKS(USB_CDC_TX_TIMEOUT_MS);
+    while (!s_tx_failed && !atomic_load(&s_reset_pending) &&
+           tud_cdc_n_connected(TINYUSB_CDC_ACM_0)) {
+        /* A single writer owns the mutex; TinyUSB only frees FIFO space.
+         * Wait before queueing ANY bytes so timeout cannot truncate a frame. */
+        if (tud_cdc_n_write_available(TINYUSB_CDC_ACM_0) >= len) {
+            size_t queued = tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, data, len);
+            sent = (queued == len);
+            s_tx_failed = (queued > 0 && !sent);
+            tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0);
             break;
         }
-        if (queued == 0 && (TickType_t)(xTaskGetTickCount() - start) >= timeout_ticks) {
-            /* Partially queued — the tail of this frame is missing and cannot
-             * be retracted.  Abandon the stream and force a host reconnect. */
-            s_tx_failed = true;
+        if ((TickType_t)(xTaskGetTickCount() - start) >= timeout) {
             break;
         }
         tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0);
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelay(1); /* at least one tick, including at CONFIG_FREERTOS_HZ=100 */
     }
-
-    tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0);
-
     xSemaphoreGive(usb_cdc_tx_mutex);
-    return off == len;
+    return sent;
 }

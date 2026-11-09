@@ -25,6 +25,10 @@ typedef struct {
  */
 esp_err_t accelerometer_init(void);
 
+/* Reset the dedicated bus and restore sensor configuration. Call only from
+ * the sampling task, with no concurrent reads. Also retries an absent sensor. */
+esp_err_t accelerometer_recover(void);
+
 /* True once the sensor answered the boot probe. */
 bool accelerometer_is_present(void);
 

@@ -18,6 +18,7 @@
 #include "accelerometer.h"
 #include "config.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -28,6 +29,8 @@ static const char *TAG = "VIBRATION";
 #define MS2_TO_MG               (1000.0f / G_TO_MPS2)   /* m/s² → milli-g */
 #define M_TO_UM                 1.0e6f                  /* m/s → µm/s */
 #define VIB_FAIL_THRESHOLD      2
+#define VIB_STALE_US            250000
+#define VIB_RECOVERY_US         1000000
 #define VIB_TASK_PERIOD_MS      10
 #define VIB_TASK_STACK_SIZE     8192
 #define VIB_TASK_PRIORITY       10
@@ -59,6 +62,9 @@ static SemaphoreHandle_t s_mutex;
 static bool s_enabled;
 static bool s_failed;
 static uint32_t s_consec_fail;
+static int64_t s_last_sample_us;
+static int64_t s_last_recovery_us;
+static bool s_sensor_ready; /* sampling task only */
 
 /* High-pass (DC-block) + integrator state, per axis.  These are continuous:
  * they are never reset on read, only the statistics below are. */
@@ -213,43 +219,79 @@ static void compute_reading(VibrationReading *out) {
 
 /* ── Sampling task ─────────────────────────────────────────── */
 
+/* One polling cycle, separated from scheduling so failures can be exercised
+ * with a fake sensor. I2C never runs while holding the public-state mutex. */
+static void vibration_poll(void) {
+    uint8_t entries = 0;
+    AccelSample buf[VIB_FIFO_MAX_SAMPLES];
+    esp_err_t err = ESP_ERR_INVALID_STATE;
+    if (s_sensor_ready) {
+        err = accelerometer_fifo_entries(&entries);
+        if (err == ESP_OK && entries > 0) {
+            if (entries > VIB_FIFO_MAX_SAMPLES) {
+                err = ESP_ERR_INVALID_RESPONSE;
+            } else {
+                err = accelerometer_read_fifo(buf, entries);
+            }
+        }
+    }
+
+    int64_t now = esp_timer_get_time();
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    if (err == ESP_OK) {
+        s_consec_fail = 0;
+        if (entries > 0) {
+            /* A long gap invalidates both the interval and the filter state. */
+            if (now - s_last_sample_us >= VIB_STALE_US || s_failed) {
+                reset_accumulators();
+                s_first_sample = true;
+            }
+            for (uint8_t i = 0; i < entries; i++) {
+                process_sample(&buf[i]);
+            }
+            s_last_sample_us = now;
+            s_failed = false;
+        }
+    } else {
+        if (s_consec_fail < VIB_FAIL_THRESHOLD) {
+            s_consec_fail++;
+        }
+        /* A partial FIFO read may have consumed samples; do not integrate
+         * across an unknown gap, even when the next transaction succeeds. */
+        reset_accumulators();
+        s_first_sample = true;
+    }
+    bool needs_recovery = !s_sensor_ready || s_consec_fail >= VIB_FAIL_THRESHOLD ||
+                          now - s_last_sample_us >= VIB_STALE_US;
+    if (needs_recovery) {
+        s_failed = true;
+        reset_accumulators();
+        s_first_sample = true;
+    }
+    xSemaphoreGive(s_mutex);
+
+    if (needs_recovery && now - s_last_recovery_us >= VIB_RECOVERY_US) {
+        s_sensor_ready = (accelerometer_recover() == ESP_OK);
+        s_last_recovery_us = esp_timer_get_time();
+        if (s_sensor_ready) {
+            xSemaphoreTake(s_mutex, portMAX_DELAY);
+            s_enabled = true;
+            s_consec_fail = 0;
+            s_last_sample_us = s_last_recovery_us;
+            /* Remain unhealthy until actual samples arrive. */
+            xSemaphoreGive(s_mutex);
+        }
+    }
+}
+
 static void vibration_task(void *arg) {
     (void) arg;
-    TickType_t last_wake = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(VIB_TASK_PERIOD_MS);
-
     while (true) {
-        vTaskDelayUntil(&last_wake, period);
-
-        bool got_sample = false;
-        uint8_t entries = 0;
-        if (accelerometer_fifo_entries(&entries) == ESP_OK && entries > 0) {
-            if (entries > VIB_FIFO_MAX_SAMPLES) {
-                entries = VIB_FIFO_MAX_SAMPLES;
-            }
-            AccelSample buf[VIB_FIFO_MAX_SAMPLES];
-            if (accelerometer_read_fifo(buf, entries) == ESP_OK) {
-                xSemaphoreTake(s_mutex, portMAX_DELAY);
-                for (uint8_t i = 0; i < entries; i++) {
-                    process_sample(&buf[i]);
-                }
-                xSemaphoreGive(s_mutex);
-                got_sample = true;
-            }
-        }
-
-        if (got_sample) {
-            s_consec_fail = 0;
-            s_failed = false;
-        } else {
-            /* I2C error, or an empty FIFO (a sensor that has stopped producing
-             * data) — both count as a failure so a dead sensor is never reported
-             * as healthy. */
-            s_consec_fail++;
-            if (s_consec_fail >= VIB_FAIL_THRESHOLD) {
-                s_failed = true;
-            }
-        }
+        /* The hardware FIFO preserves the 100 Hz sample cadence. Always sleep
+         * after I/O: missed deadlines must not produce catch-up polling bursts. */
+        vTaskDelay(period > 0 ? period : 1);
+        vibration_poll();
     }
 }
 
@@ -257,14 +299,17 @@ static void vibration_task(void *arg) {
 
 void vibration_init(void) {
     s_enabled = (accelerometer_init() == ESP_OK);
-    s_failed = false;
+    s_sensor_ready = s_enabled;
+    s_failed = true;
     s_consec_fail = 0;
     s_first_sample = true;
+    s_last_sample_us = s_last_recovery_us = esp_timer_get_time();
 
     s_mutex = xSemaphoreCreateMutex();
     if (s_mutex == NULL) {
         ESP_LOGE(TAG, "failed to create mutex — vibration disabled");
         s_enabled = false;
+        return;
     }
 
     s_count = 0;
@@ -279,16 +324,12 @@ void vibration_init(void) {
     s_hp_in_z = s_hp_out_z = s_vel_z = 0.0f;
     s_grav_x = s_grav_y = s_grav_z = 0.0f;
 
-    if (s_enabled) {
-        if (xTaskCreatePinnedToCore(vibration_task, "vibration", VIB_TASK_STACK_SIZE,
-                                    NULL, VIB_TASK_PRIORITY, NULL, VIB_TASK_CORE) != pdPASS) {
-            ESP_LOGE(TAG, "failed to create vibration task — vibration disabled");
-            s_enabled = false;
-        } else {
-            ESP_LOGI(TAG, "accelerometer present, sampling at %d Hz", VIB_SAMPLE_RATE_HZ);
-        }
-    } else {
-        ESP_LOGW(TAG, "accelerometer absent — vibration unavailable");
+    /* Start even when boot probing failed, so a temporarily absent sensor can
+     * recover without rebooting the ESP32. */
+    if (xTaskCreatePinnedToCore(vibration_task, "vibration", VIB_TASK_STACK_SIZE,
+                                NULL, VIB_TASK_PRIORITY, NULL, VIB_TASK_CORE) != pdPASS) {
+        ESP_LOGE(TAG, "failed to create vibration task — vibration disabled");
+        s_enabled = false;
     }
 }
 
@@ -297,17 +338,32 @@ void vibration_take_reading(VibrationReading *out) {
         return;
     }
     memset(out, 0, sizeof(*out));
-    if (!s_enabled) {
+    if (s_mutex == NULL) {
         return;
     }
 
     xSemaphoreTake(s_mutex, portMAX_DELAY);
-    compute_reading(out);
+    if (s_enabled && !s_failed) {
+        compute_reading(out);
+    }
     xSemaphoreGive(s_mutex);
 }
 
-bool vibration_get_enabled(void) { return s_enabled; }
-bool vibration_get_healthy(void) { return s_enabled && !s_failed; }
+bool vibration_get_enabled(void) {
+    if (s_mutex == NULL) return false;
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    bool enabled = s_enabled;
+    xSemaphoreGive(s_mutex);
+    return enabled;
+}
+
+bool vibration_get_healthy(void) {
+    if (s_mutex == NULL) return false;
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    bool healthy = s_enabled && !s_failed;
+    xSemaphoreGive(s_mutex);
+    return healthy;
+}
 
 void vibration_get_orientation(OrientationReading *out) {
     if (out == NULL) {
@@ -316,11 +372,15 @@ void vibration_get_orientation(OrientationReading *out) {
     out->pitch_deg = 0.0f;
     out->roll_deg = 0.0f;
     out->ax_g = out->ay_g = out->az_g = 0.0f;
-    if (!s_enabled) {
+    if (s_mutex == NULL) {
         return;
     }
 
     xSemaphoreTake(s_mutex, portMAX_DELAY);
+    if (!s_enabled || s_failed) {
+        xSemaphoreGive(s_mutex);
+        return;
+    }
     out->ax_g = s_grav_x;
     out->ay_g = s_grav_y;
     out->az_g = s_grav_z;

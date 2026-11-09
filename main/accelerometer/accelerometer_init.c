@@ -45,6 +45,8 @@ static esp_err_t configure_sensor(AccelSensor *sensor) {
 
     /* ±2 g, 10-bit, 100 Hz, FIFO stream mode. */
     static const struct { uint8_t reg; uint8_t val; } cfg[] = {
+        { ADXL345_REG_POWER_CTL, 0x00 }, /* standby before reconfiguration */
+        { ADXL345_REG_FIFO_CTL, 0x00 },  /* bypass discards stale FIFO samples */
         { ADXL345_REG_DATA_FORMAT, 0x00 },
         { ADXL345_REG_BW_RATE, ADXL345_BW_RATE_100HZ },
         { ADXL345_REG_FIFO_CTL, ADXL345_FIFO_MODE_STREAM },
@@ -59,13 +61,16 @@ static esp_err_t configure_sensor(AccelSensor *sensor) {
         }
     }
 
-    /* Verify the measurement-mode enable took effect — the most critical write. */
-    uint8_t power = 0;
-    if (accelerometer_read_register(sensor, ADXL345_REG_POWER_CTL, &power) != ESP_OK ||
-        (power & ADXL345_POWER_CTL_MEASURE) == 0) {
-        ESP_LOGE(TAG, "addr 0x%02X: measurement mode did not take effect (0x%02X)",
-                 sensor->address, power);
-        return ESP_ERR_INVALID_STATE;
+    /* Verify all final settings, including FIFO and output data rate. */
+    for (size_t i = 2; i < sizeof(cfg) / sizeof(cfg[0]); i++) {
+        uint8_t value = 0;
+        esp_err_t err = accelerometer_read_register(sensor, cfg[i].reg, &value);
+        if (err != ESP_OK) {
+            return err;
+        }
+        if (value != cfg[i].val) {
+            return ESP_ERR_INVALID_STATE;
+        }
     }
 
     ESP_LOGI(TAG, "ADXL345 at 0x%02X ready", sensor->address);
@@ -73,15 +78,16 @@ static esp_err_t configure_sensor(AccelSensor *sensor) {
 }
 
 esp_err_t accelerometer_init(void) {
-    accel_sensor.address    = ADXL345_ADDR;
-    accel_sensor.dev_handle = NULL;
-    accel_sensor.present    = false;
+    accel_sensor.address = ADXL345_ADDR;
+    accel_sensor.present = false;
 
-    i2c_master_bus_handle_t bus = NULL;
-    esp_err_t err = i2c_bus_create(ADXL345_I2C_PORT, ADXL345_I2C_SDA_GPIO,
-                                   ADXL345_I2C_SCL_GPIO, &bus);
-    if (err != ESP_OK) {
-        return err;
+    esp_err_t err;
+    if (accel_sensor.bus_handle == NULL) {
+        err = i2c_bus_create(ADXL345_I2C_PORT, ADXL345_I2C_SDA_GPIO,
+                             ADXL345_I2C_SCL_GPIO, &accel_sensor.bus_handle);
+        if (err != ESP_OK) {
+            return err;
+        }
     }
 
     i2c_device_config_t dev_config = {
@@ -90,11 +96,12 @@ esp_err_t accelerometer_init(void) {
         .scl_speed_hz    = ACCEL_CLK_HZ,
     };
 
-    err = i2c_master_bus_add_device(bus, &dev_config, &accel_sensor.dev_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "addr 0x%02X: device handle failed: %s",
-                 accel_sensor.address, esp_err_to_name(err));
-        return err;
+    if (accel_sensor.dev_handle == NULL) {
+        err = i2c_master_bus_add_device(accel_sensor.bus_handle, &dev_config,
+                                       &accel_sensor.dev_handle);
+        if (err != ESP_OK) {
+            return err;
+        }
     }
 
     /* Probe the sensor with retries — I2C can fail intermittently. */
@@ -103,7 +110,7 @@ esp_err_t accelerometer_init(void) {
         if (attempt > 0) {
             vTaskDelay(pdMS_TO_TICKS(200));
         }
-        err = i2c_master_probe(bus, accel_sensor.address, ACCEL_TIMEOUT_MS);
+        err = i2c_master_probe(accel_sensor.bus_handle, accel_sensor.address, ACCEL_TIMEOUT_MS);
         if (err == ESP_OK) {
             break;
         }
@@ -117,6 +124,19 @@ esp_err_t accelerometer_init(void) {
     }
 
     err = configure_sensor(&accel_sensor);
+    accel_sensor.present = (err == ESP_OK);
+    return err;
+}
+
+esp_err_t accelerometer_recover(void) {
+    if (accel_sensor.bus_handle == NULL || accel_sensor.dev_handle == NULL) {
+        return accelerometer_init();
+    }
+    accel_sensor.present = false;
+    esp_err_t err = i2c_master_bus_reset(accel_sensor.bus_handle);
+    if (err == ESP_OK) {
+        err = configure_sensor(&accel_sensor);
+    }
     accel_sensor.present = (err == ESP_OK);
     return err;
 }
